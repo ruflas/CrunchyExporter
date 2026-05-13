@@ -22,6 +22,11 @@ env/
 *.swp
 .claude/
 
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+
 # OS
 .DS_Store
 Thumbs.db
