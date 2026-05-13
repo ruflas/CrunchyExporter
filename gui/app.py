@@ -12,8 +12,7 @@ class App(ctk.CTk):
     def __init__(self):
         # Load config and language before creating any widget
         self.project_root: Path = _PROJECT_ROOT
-        self.cli_root:     Path = _PROJECT_ROOT.parent / "CrunchyExporter-cli"
-        self.config_path: Path  = _PROJECT_ROOT / "config.yaml"
+        self.config_path:  Path = _PROJECT_ROOT / "config.yaml"
         self.cfg: dict          = self._load_config()
 
         i18n.load(self.cfg.get("ui", {}).get("language", "en"))

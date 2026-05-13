@@ -4,11 +4,10 @@ Schedule tab — register / remove a daily auto-sync task.
 On Windows : Windows Task Scheduler (schtasks)
 On Linux/Mac: crontab
 
-The scheduled command delegates entirely to the CLI's sync command:
-    python <cli>/src/main.py -c <config.yaml> sync --target <target>
+The scheduled command runs the bundled CLI entry point:
+    python <project_root>/src/main.py -c <config.yaml> sync --target <target>
 
-This is identical to running  `python src/main.py schedule`  in the CLI project
-and reuses its logic without reimplementing anything.
+No external project required — src/ ships with this repository.
 """
 
 import sys
