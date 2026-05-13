@@ -6,6 +6,9 @@ on:
       - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
@@ -31,21 +34,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt pyinstaller
 
-      - name: Build — Windows
+      - name: Build (Windows)
         if: runner.os == 'Windows'
-        run: >
-          python -m PyInstaller
-          --onefile
-          --windowed
-          --name=CrunchyExporter
-          --icon=crunchyexporterlogo.ico
-          "--add-data=locales;locales"
-          "--add-data=crunchyexporterlogo.png;."
-          "--add-data=config.example.yaml;."
-          --collect-data=customtkinter
-          main.py
+        run: python -m PyInstaller --onefile --windowed --name=CrunchyExporter --icon=crunchyexporterlogo.ico "--add-data=locales;locales" "--add-data=crunchyexporterlogo.png;." "--add-data=config.example.yaml;." --collect-data=customtkinter main.py
 
-      - name: Build — Linux
+      - name: Build (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get install -y -qq python3-tk
@@ -69,4 +62,3 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/${{ matrix.artifact }}
-          name: ${{ matrix.release_name }}
