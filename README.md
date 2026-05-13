@@ -41,6 +41,10 @@ CrunchyExporter authenticates using the `etp_rt` session cookie from your browse
 4. In the left panel expand **Cookies → https://www.crunchyroll.com**
 5. Find the row named `etp_rt` and copy its **Value**
 
+You can just copy there but you will need to search for the token again after restart the program.
+![Sync](img/sync.png)
+
+Recomended:
 Open the app, go to the **Settings** tab and paste the value in the **etp_rt Cookie** field. Click **Save Settings**.
 
 ![Settings](img/settings.png)
