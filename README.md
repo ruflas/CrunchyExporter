@@ -42,6 +42,7 @@ CrunchyExporter authenticates using the `etp_rt` session cookie from your browse
 5. Find the row named `etp_rt` and copy its **Value**
 
 You can just copy there but you will need to search for the token again after restart the program.
+Here when you copy and paste the token you just press **Sync Now** and the script will sync your crunchyroll history. 
 ![Sync](img/sync.png)
 
 Recomended:
