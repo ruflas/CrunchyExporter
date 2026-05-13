@@ -137,6 +137,8 @@ From now on the export runs without any browser interaction.
 
 Open the **Schedule** tab, choose a time and export targets, then click **Create scheduled task**.
 
+![Schedule](img/schedule.png)
+
 On **Windows** this creates a Windows Task Scheduler entry.
 On **Linux/Mac** it adds an entry to your crontab.
 
