@@ -107,12 +107,15 @@ class TrayIcon:
         import sys
         import subprocess
 
-        cmd = [
-            sys.executable,
-            str(self.app.project_root / "src" / "main.py"),
-            "-c", str(self.app.config_path),
-            "sync",
-        ]
+        if getattr(sys, "frozen", False):
+            cmd = [sys.executable, "--headless-sync"]
+        else:
+            cmd = [
+                sys.executable,
+                str(self.app.project_root / "src" / "main.py"),
+                "-c", str(self.app.config_path),
+                "sync",
+            ]
 
         def run() -> None:
             result = subprocess.run(cmd, capture_output=True, text=True)

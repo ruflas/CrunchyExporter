@@ -134,11 +134,16 @@ class ScheduleTab:
     # ------------------------------------------------------------------ helpers
 
     def _build_cmd(self) -> str:
-        python   = sys.executable
-        src_main = self.app.project_root / "src" / "main.py"
-        cfg_path = self.app.config_path
-        target   = self._target_var.get()
-        return f'"{python}" "{src_main}" -c "{cfg_path}" sync --target {target}'
+        python = sys.executable
+        target = self._target_var.get()
+
+        if getattr(sys, "frozen", False):
+            # Bundled exe: call ourselves in headless mode — no temp paths
+            return f'"{python}" --headless-sync --target {target}'
+        else:
+            src_main = self.app.project_root / "src" / "main.py"
+            cfg_path = self.app.config_path
+            return f'"{python}" "{src_main}" -c "{cfg_path}" sync --target {target}'
 
     def _update_cmd_preview(self) -> None:
         self._cmd_lbl.configure(text=self._build_cmd())
