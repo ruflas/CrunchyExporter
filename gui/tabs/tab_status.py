@@ -70,7 +70,7 @@ class StatusTab:
         store_path = self.app.cfg.get("storage", {}).get("path", "data/history.json")
         store_p = Path(store_path)
         if not store_p.is_absolute():
-            store_p = self.app.project_root / store_path
+            store_p = self.app.data_root / store_path
 
         store     = HistoryStore(store_p)
         summaries = store.series_summaries()

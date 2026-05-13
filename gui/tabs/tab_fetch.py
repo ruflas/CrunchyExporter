@@ -204,7 +204,7 @@ class FetchTab:
                 etp_rt,
                 self._replace_var.get(),
                 self.app.cfg,
-                self.app.project_root,
+                self.app.data_root,
                 log_cb,
                 on_done,
                 lambda: self._cancelled,
@@ -225,7 +225,7 @@ def _hsep(parent, grid_row: int) -> None:
 
 # ------------------------------------------------------------------ background worker
 
-def _sync_worker(etp_rt, replace, cfg, project_root, log, done, is_cancelled):
+def _sync_worker(etp_rt, replace, cfg, data_root, log, done, is_cancelled):
     try:
         from src.crunchyroll.auth import (
             CRAuth, CRAuthError, DEFAULT_CLIENT_ID, DEFAULT_CLIENT_SECRET)
@@ -243,7 +243,7 @@ def _sync_worker(etp_rt, replace, cfg, project_root, log, done, is_cancelled):
 
     store_p = Path(store_path)
     if not store_p.is_absolute():
-        store_p = project_root / store_path
+        store_p = data_root / store_path
 
     log(i18n.t("sync_log_logging_in"), "info")
     try:

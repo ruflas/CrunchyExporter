@@ -231,7 +231,7 @@ class ExportTab:
 
         threading.Thread(
             target=_export_worker,
-            args=(targets, self.app.cfg, self.app.project_root, log_cb, on_done),
+            args=(targets, self.app.cfg, self.app.data_root, log_cb, on_done),
             daemon=True,
         ).start()
 
@@ -290,7 +290,7 @@ class _TargetCard(ctk.CTkFrame):
 
 # ------------------------------------------------------------------ background worker
 
-def _export_worker(targets, cfg, project_root, log, done):
+def _export_worker(targets, cfg, data_root, log, done):
     try:
         from src.storage.history_store import HistoryStore
         from src.exporters.anilist import AniListExporter
@@ -304,7 +304,7 @@ def _export_worker(targets, cfg, project_root, log, done):
     store_path = cfg.get("storage", {}).get("path", "data/history.json")
     store_p = Path(store_path)
     if not store_p.is_absolute():
-        store_p = project_root / store_path
+        store_p = data_root / store_path
 
     store = HistoryStore(store_p)
     if len(store) == 0:
@@ -321,7 +321,7 @@ def _export_worker(targets, cfg, project_root, log, done):
                 "path", "data/animelist.xml")
             xml_p = Path(xml_path)
             if not xml_p.is_absolute():
-                xml_p = project_root / xml_path
+                xml_p = data_root / xml_path
             log(i18n.t("export_log_xml_start"), "info")
             try:
                 result = MALXMLExporter(str(xml_p)).export(summaries)

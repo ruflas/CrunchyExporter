@@ -4,15 +4,18 @@ from pathlib import Path
 import customtkinter as ctk
 
 from gui import i18n
+from gui.paths import resource_root, data_root
 
 _PROJECT_ROOT = Path(__file__).parent.parent
 
 
 class App(ctk.CTk):
     def __init__(self):
-        # Load config and language before creating any widget
-        self.project_root: Path = _PROJECT_ROOT
-        self.config_path:  Path = _PROJECT_ROOT / "config.yaml"
+        # resource_root → locales/, src/, images  (sys._MEIPASS when frozen)
+        # data_root     → config.yaml, data/      (next to exe when frozen)
+        self.project_root: Path = resource_root()
+        self.data_root:    Path = data_root()
+        self.config_path:  Path = self.data_root / "config.yaml"
         self.cfg: dict          = self._load_config()
 
         i18n.load(self.cfg.get("ui", {}).get("language", "en"))

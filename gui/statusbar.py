@@ -52,7 +52,7 @@ class StatusBar(ctk.CTkFrame):
 
     def refresh(self) -> None:
         cfg = self.app.cfg
-        pr  = self.app.project_root
+        pr  = self.app.data_root
 
         self._update_cookie(cfg)
         self._update_history(cfg, pr)
