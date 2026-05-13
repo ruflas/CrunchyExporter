@@ -43,11 +43,10 @@ CrunchyExporter authenticates using the `etp_rt` session cookie from your browse
 
 Open the app, go to the **Settings** tab and paste the value in the **etp_rt Cookie** field. Click **Save Settings**.
 
-<!-- screenshot: settings tab — etp_rt field -->
+![Settings](img/settings.png)
 
 Then go to the **Sync** tab and click **Sync Now**.
 
-<!-- screenshot: sync tab — in progress -->
 
 On success the status bar at the top will show something like:
 ```
@@ -64,7 +63,7 @@ History is saved to `data/history.json`. Re-running sync only adds new episodes 
 
 Open the **My Library** tab to see all synced series with episode counts.
 
-<!-- screenshot: library tab -->
+![My Library](img/library.png)
 
 ---
 
@@ -72,7 +71,7 @@ Open the **My Library** tab to see all synced series with episode counts.
 
 Open the **Export** tab. Each card shows whether a target is configured and ready.
 
-<!-- screenshot: export tab — cards -->
+![Export](img/export.png)
 
 Select the targets you want and click **Export**.
 If a token is missing, the authorization flow starts automatically.
@@ -106,8 +105,6 @@ Syncs progress, status and real completion dates directly via the AniList API.
 Open the **Settings** tab, paste the Client ID under **AniList**, then click **Get Token**.
 Your browser will open — authorize the app and copy the `access_token` from the redirect URL back into the dialog.
 
-<!-- screenshot: settings tab — anilist section -->
-
 Click **Save Settings**. The AniList card in the Export tab will turn green.
 
 From now on the export runs without any browser interaction.
@@ -130,8 +127,6 @@ Syncs progress, status, start date and finish date directly via the MAL API.
 Open **Settings**, paste the Client ID under **MyAnimeList**, then click **Authorize MAL**.
 Your browser will open — authorize the app. MAL redirects to `http://localhost/?code=XXXX` — the page won't load, that's expected. Copy the `code=` value from the address bar and paste it into the dialog.
 
-<!-- screenshot: settings tab — mal section -->
-
 Click **Save Settings**. The MAL card in the Export tab will turn green.
 
 From now on the export runs without any browser interaction.
@@ -141,8 +136,6 @@ From now on the export runs without any browser interaction.
 ## Step 4 — Schedule automatic daily syncs (optional)
 
 Open the **Schedule** tab, choose a time and export targets, then click **Create scheduled task**.
-
-<!-- screenshot: schedule tab -->
 
 On **Windows** this creates a Windows Task Scheduler entry.
 On **Linux/Mac** it adds an entry to your crontab.
@@ -157,7 +150,7 @@ Requires `etp_rt` saved in `config.yaml` (set it via the Settings tab).
 Enable **System tray** in Settings → Interface. When active, closing the window keeps the app
 running in the notification area. Right-click the tray icon to sync immediately or exit.
 
-<!-- screenshot: tray menu -->
+![Settings — Interface](img/settings2.png)
 
 ---
 
