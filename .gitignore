@@ -1,0 +1,27 @@
+# User config and data — never commit credentials or personal history
+config.yaml
+data/
+
+# Development notes
+context.txt
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE and tools
+.vscode/
+.idea/
+*.swp
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db

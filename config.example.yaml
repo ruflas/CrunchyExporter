@@ -1,0 +1,47 @@
+# CrunchyExporter configuration
+# Copy this file to config.yaml and fill in your values.
+
+# Locale for CR API responses (affects series titles)
+locale: "en-US"
+
+storage:
+  path: "data/history.json"
+
+crunchyroll:
+  # etp_rt: cookie de sesión de Crunchyroll (método de auth actual).
+  # Pasos para obtenerla:
+  #   1. Inicia sesión en crunchyroll.com en tu navegador.
+  #   2. DevTools → Application → Cookies → https://www.crunchyroll.com
+  #   3. Copia el valor de la cookie 'etp_rt'.
+  # También se puede pasar como argumento: python src/main.py fetch --etp-rt VALOR
+  etp_rt: ""
+
+  # Opcional: sobrescribe las credenciales del cliente web público.
+  # Dejar vacío para usar los valores por defecto.
+  client_id: ""
+  client_secret: ""
+
+exporters:
+
+  # --- MAL XML (no authentication required) ---
+  mal_xml:
+    path: "data/animelist.xml"
+
+  # --- AniList ---
+  # 1. Create an API client at https://anilist.co/settings/developer
+  # 2. Set redirect URI to: https://anilist.co/api/v2/oauth/pin
+  # 3. Run `python src/main.py export --target anilist` without a token to get the auth URL.
+  # 4. Authorize and paste the access_token from the redirect URL below.
+  anilist:
+    client_id: ""
+    access_token: ""
+
+  # --- MyAnimeList ---
+  # 1. Create an API client at https://myanimelist.net/apiconfig
+  # 2. Set redirect URI to: http://localhost
+  # 3. Run `python src/main.py export --target mal` — it will guide you through OAuth PKCE.
+  # 4. Paste the resulting token below to skip the OAuth flow next time.
+  mal:
+    client_id: ""
+    client_secret: ""
+    access_token: ""
