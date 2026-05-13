@@ -289,9 +289,3 @@ python main.py
 ## Related
 
 - [CrunchyExporter-cli](https://github.com/ruflas/CrunchyExporter-cli) — CLI version / underlying library
-
----
-
-## License
-
-[MIT](LICENSE) © 2026 ruflas@ruflas.dev
