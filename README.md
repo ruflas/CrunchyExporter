@@ -22,12 +22,40 @@ Exports include watch progress, series status (watching/completed), and real sta
 
 ---
 
-## Setup
+## Getting started
 
+### Option A — Pre-built binaries
+
+Pre-built releases are available on the [Releases page](https://github.com/ruflas/CrunchyExporter/releases):
+
+- **Windows**: `CrunchyExporter.exe` (standalone, no Python needed)
+- **Linux**: `CrunchyExporter` (standalone executable)
+
+> **Security note:** I strongly recommend building from source instead of running pre-built binaries from the internet — including mine. You have no way to verify what's inside an `.exe` you didn't compile yourself. The source is short, readable, and straightforward to audit.
+
+### Option B — Run from source (recommended)
+
+**Windows / Linux:**
 ```bash
+git clone https://github.com/ruflas/CrunchyExporter.git
+cd CrunchyExporter
 pip install -r requirements.txt
 python main.py
 ```
+
+**Mac:**
+```bash
+git clone https://github.com/ruflas/CrunchyExporter.git
+cd CrunchyExporter
+pip3 install -r requirements.txt
+python3 main.py
+```
+
+> If `git` is not installed on Mac, your system will prompt you to install Xcode Command Line Tools automatically — just accept it.
+
+### Option C — Build your own binary
+
+See the [build instructions](#building-from-source) at the bottom of this page.
 
 ---
 
@@ -283,6 +311,32 @@ python main.py
 - Modifying `src/` directly — it is a copy of [CrunchyExporter-cli](https://github.com/ruflas/CrunchyExporter-cli); fixes should go there first
 - Breaking the existing Settings/Export flow without discussion
 - Adding dependencies that aren't strictly necessary
+
+---
+
+## Building from source
+
+Building your own binary is the safest way to run the app — you know exactly what's in it.
+
+**Windows (produces `CrunchyExporter.exe`):**
+```bash
+pip install pyinstaller
+pyinstaller --onefile --windowed --icon=crunchyexporterlogo.ico --name CrunchyExporter main.py
+```
+
+**Linux (produces `CrunchyExporter`):**
+```bash
+pip install pyinstaller
+pyinstaller --onefile --windowed --name CrunchyExporter main.py
+```
+
+**Mac (produces `CrunchyExporter.app`):**
+```bash
+pip3 install pyinstaller
+pyinstaller --onefile --windowed --name CrunchyExporter main.py
+```
+
+The output lands in the `dist/` folder. No Python installation needed on the target machine.
 
 ---
 
