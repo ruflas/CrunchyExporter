@@ -293,6 +293,7 @@ class _TargetCard(ctk.CTkFrame):
 def _export_worker(targets, cfg, data_root, log, done):
     try:
         from src.storage.history_store import HistoryStore
+        from src.storage.export_log import ExportLog
         from src.exporters.anilist import AniListExporter
         from src.exporters.mal import MALExporter
         from src.exporters.mal_xml import MALXMLExporter
@@ -315,6 +316,8 @@ def _export_worker(targets, cfg, data_root, log, done):
     summaries = store.series_summaries()
     log(i18n.t("export_log_start", count=len(summaries)), "info")
 
+    export_log = ExportLog(data_root / "data" / "export_log.json")
+
     for target in targets:
         if target == "xml":
             xml_path = cfg.get("exporters", {}).get("mal_xml", {}).get(
@@ -325,6 +328,7 @@ def _export_worker(targets, cfg, data_root, log, done):
             log(i18n.t("export_log_xml_start"), "info")
             try:
                 result = MALXMLExporter(str(xml_p)).export(summaries)
+                export_log.record("xml", result)
                 log(i18n.t("export_log_xml_ok",
                            path=xml_p, count=len(result.updated)), "ok")
             except Exception as e:
@@ -338,6 +342,7 @@ def _export_worker(targets, cfg, data_root, log, done):
             log(i18n.t("export_log_anilist_start"), "info")
             try:
                 result = AniListExporter(token).export(summaries)
+                export_log.record("anilist", result)
                 log(i18n.t("export_log_anilist_ok",
                            updated=len(result.updated),
                            skipped=len(result.skipped),
@@ -355,6 +360,7 @@ def _export_worker(targets, cfg, data_root, log, done):
             log(i18n.t("export_log_mal_start"), "info")
             try:
                 result = MALExporter(token).export(summaries)
+                export_log.record("mal", result)
                 log(i18n.t("export_log_mal_ok",
                            updated=len(result.updated),
                            skipped=len(result.skipped),

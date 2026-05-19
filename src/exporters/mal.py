@@ -96,11 +96,11 @@ class MALExporter(BaseExporter):
     def export(self, series: list[SeriesSummary]) -> ExportResult:
         result = ExportResult()
         for s in series:
-            anime = self.search_anime(s.series_id, s.series_title)
-            if not anime:
-                result.failed.append((s.series_title, "Not found on MyAnimeList"))
-                continue
             try:
+                anime = self.search_anime(s.series_id, s.series_title)
+                if not anime:
+                    result.failed.append((s.series_title, "Not found on MyAnimeList"))
+                    continue
                 status = self._determine_status(s, anime.get("num_episodes", 0))
                 self._update_list(anime["id"], status, s)
                 result.updated.append(s.series_title)
