@@ -50,7 +50,12 @@ class MALExporter(BaseExporter):
             params={"q": title, "limit": 5, "fields": "id,title,num_episodes,media_type"},
             timeout=10,
         )
-        resp.raise_for_status()
+        if not resp.ok:
+            try:
+                detail = resp.json()
+            except Exception:
+                detail = resp.text
+            raise RuntimeError(f"MAL search failed {resp.status_code}: {detail}")
         items = [item["node"] for item in resp.json().get("data", [])]
         if not items:
             return None
