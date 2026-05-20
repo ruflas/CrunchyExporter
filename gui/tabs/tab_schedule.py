@@ -13,6 +13,7 @@ No external project required — src/ ships with this repository.
 import sys
 import platform
 import subprocess
+import threading
 from pathlib import Path
 import customtkinter as ctk
 
@@ -149,7 +150,12 @@ class ScheduleTab:
         self._cmd_lbl.configure(text=self._build_cmd())
 
     def _refresh_status(self) -> None:
-        active, run_time = _query_task()
+        def _query():
+            active, run_time = _query_task()
+            self.frame.after(0, lambda: self._apply_status(active, run_time))
+        threading.Thread(target=_query, daemon=True).start()
+
+    def _apply_status(self, active: bool, run_time: str) -> None:
         if active:
             self._status_dot.configure(text_color="#4caf50")
             self._status_lbl.configure(
@@ -176,21 +182,34 @@ class ScheduleTab:
             messagebox.showerror("Error", "Invalid time. Use HH:MM (e.g. 08:00).")
             return
 
-        ok, msg = _schedule_create(self._build_cmd(), run_at)
-        if ok:
-            messagebox.showinfo("OK", i18n.t("schedule_created", time=run_at))
-        else:
-            messagebox.showerror("Error", i18n.t("schedule_err_create", error=msg))
-        self._refresh_status()
+        cmd = self._build_cmd()
+
+        def _do():
+            ok, msg = _schedule_create(cmd, run_at)
+            def _done():
+                if ok:
+                    messagebox.showinfo("OK", i18n.t("schedule_created", time=run_at))
+                else:
+                    messagebox.showerror("Error", i18n.t("schedule_err_create", error=msg))
+                self._refresh_status()
+            self.frame.after(0, _done)
+
+        threading.Thread(target=_do, daemon=True).start()
 
     def _on_remove(self) -> None:
         from tkinter import messagebox
-        ok, msg = _schedule_remove()
-        if ok:
-            messagebox.showinfo("OK", i18n.t("schedule_removed"))
-        else:
-            messagebox.showerror("Error", i18n.t("schedule_err_remove", error=msg))
-        self._refresh_status()
+
+        def _do():
+            ok, msg = _schedule_remove()
+            def _done():
+                if ok:
+                    messagebox.showinfo("OK", i18n.t("schedule_removed"))
+                else:
+                    messagebox.showerror("Error", i18n.t("schedule_err_remove", error=msg))
+                self._refresh_status()
+            self.frame.after(0, _done)
+
+        threading.Thread(target=_do, daemon=True).start()
 
 
 # ------------------------------------------------------------------ platform helpers
