@@ -5,6 +5,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.1.0] — 2026-05-20
+
+### Fixed
+- **Schedule tab — GUI freeze**: creating or removing a scheduled task blocked
+  the main thread while `schtasks` ran. All subprocess calls now run in daemon
+  threads and marshal results back via `frame.after(0, callback)`.
+- **MAL export — early stop on HTTP errors**: the exporter now continues with
+  remaining entries instead of stopping at the first HTTP error.
+- **MAL search — silent failures**: `search_anime()` now reports detailed error
+  messages when a request fails instead of returning an empty result.
+
+### Added
+- **Export log persistence**: the sync/export log is now written to disk so
+  history survives application restarts.
+- **Unit tests and CI**: 73 tests across auth, history store, exporters and
+  export log, with a GitHub Actions workflow.
+
+---
+
 ## [1.0.1] — 2026-05-14
 
 ### Fixed
