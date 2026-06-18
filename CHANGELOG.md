@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.2.0] — 2026-06-19
+
+### Added
+- **MAL Settings — App Type selector**: a new checkbox lets you mark your
+  MyAnimeList app as App Type `web`, revealing a Client Secret field. App Type
+  `other` (the simpler, recommended option) still needs only the Client ID.
+
+### Fixed
+- **MAL OAuth — Client Secret never sent**: the Settings dialog always
+  exchanged the authorization code with an empty client_secret, so MAL `web`
+  type apps failed authentication even with a valid access token. The secret
+  entered in Settings is now passed through to the token exchange.
+
+---
+
 ## [1.1.0] — 2026-05-20
 
 ### Fixed
