@@ -11,6 +11,7 @@ class ConfigTab:
         self._entries: dict[str, ctk.CTkEntry] = {}
         self._build(frame)
         self._load_values()
+        self._toggle_mal_secret()
 
     # ------------------------------------------------------------------ build
 
@@ -87,6 +88,18 @@ class ConfigTab:
         # ---- MyAnimeList ----
         section("settings_section_mal")
         field("settings_client_id", "mal.client_id")
+
+        self._mal_web_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            scroll, text=i18n.t("settings_mal_web_checkbox"),
+            variable=self._mal_web_var, command=self._toggle_mal_secret,
+        ).grid(row=row[0], column=0, columnspan=3, sticky="w",
+               padx=8, pady=(4, 2))
+        row[0] += 1
+
+        field("settings_client_secret", "mal.client_secret",
+              "settings_client_secret_placeholder", secret=True)
+
         token_field("settings_access_token", "mal.access_token",
                     "settings_mal_auth_btn", self._get_mal_token)
         note("settings_mal_note")
@@ -151,10 +164,13 @@ class ConfigTab:
         put("cr.client_id",     cr.get("client_id",    ""))
         put("al.client_id",     al.get("client_id",    ""))
         put("al.access_token",  al.get("access_token", ""))
-        put("mal.client_id",    mal.get("client_id",   ""))
-        put("mal.access_token", mal.get("access_token",""))
+        put("mal.client_id",     mal.get("client_id",     ""))
+        put("mal.client_secret", mal.get("client_secret", ""))
+        put("mal.access_token",  mal.get("access_token",  ""))
         put("store.path",       stor.get("path",       ""))
         put("xml.path",         xml.get("path",        ""))
+
+        self._mal_web_var.set(bool(mal.get("client_secret", "")))
 
     def _save(self) -> None:
         def val(key: str) -> str:
@@ -172,8 +188,9 @@ class ConfigTab:
         cfg["exporters"]["anilist"]["access_token"] = val("al.access_token")
 
         cfg["exporters"].setdefault("mal", {})
-        cfg["exporters"]["mal"]["client_id"]    = val("mal.client_id")
-        cfg["exporters"]["mal"]["access_token"] = val("mal.access_token")
+        cfg["exporters"]["mal"]["client_id"]     = val("mal.client_id")
+        cfg["exporters"]["mal"]["client_secret"] = val("mal.client_secret") if self._mal_web_var.get() else ""
+        cfg["exporters"]["mal"]["access_token"]  = val("mal.access_token")
 
         cfg["exporters"].setdefault("mal_xml", {})
         if val("xml.path"):
@@ -199,6 +216,14 @@ class ConfigTab:
         from tkinter import messagebox
         messagebox.showinfo(i18n.t("settings_saved_title"),
                             i18n.t("settings_saved_msg"))
+
+    def _toggle_mal_secret(self) -> None:
+        e = self._entries["mal.client_secret"]
+        if self._mal_web_var.get():
+            e.configure(state="normal")
+        else:
+            e.delete(0, "end")
+            e.configure(state="disabled")
 
     # ------------------------------------------------------------------ OAuth
 
@@ -257,8 +282,10 @@ class ConfigTab:
         if not code or not code.strip():
             return
 
+        client_secret = self._entries["mal.client_secret"].get().strip() if self._mal_web_var.get() else ""
+
         try:
-            token = exchange_code(client_id, code.strip(), verifier, "")
+            token = exchange_code(client_id, code.strip(), verifier, client_secret)
             e = self._entries["mal.access_token"]
             e.delete(0, "end")
             e.insert(0, token)

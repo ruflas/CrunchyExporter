@@ -39,8 +39,10 @@ exporters:
   # --- MyAnimeList ---
   # 1. Create an API client at https://myanimelist.net/apiconfig
   # 2. Set redirect URI to: http://localhost
-  # 3. Run `python src/main.py export --target mal` — it will guide you through OAuth PKCE.
-  # 4. Paste the resulting token below to skip the OAuth flow next time.
+  # 3. App Type "other": leave client_secret empty. App Type "web": MAL requires
+  #    a client_secret too — fill it in or the token exchange fails with an auth error.
+  # 4. Run `python src/main.py export --target mal` — it will guide you through OAuth PKCE.
+  # 5. Paste the resulting token below to skip the OAuth flow next time.
   mal:
     client_id: ""
     client_secret: ""

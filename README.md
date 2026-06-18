@@ -150,17 +150,23 @@ Syncs progress, status, start date and finish date directly via the MAL API.
 
 **1. Create an API client**
 - Go to [myanimelist.net/apiconfig](https://myanimelist.net/apiconfig) and click **Create ID**
-- **App Type**: `web` — required for OAuth
 - **App Redirect URL**: `http://localhost`
 - **Purpose of Use**: `hobbyist`
-- Submit and note down the **Client ID**
+- Choose an **App Type**:
+  - **`other`** (recommended, simpler) — public client, no secret needed. Just copy the **Client ID**.
+  - **`web`** — MAL also requires a **Client Secret** for this type. Copy both the **Client ID** and the **Client Secret**.
 
 **2. Enter it in Settings**
 
-Open **Settings**, paste the Client ID under **MyAnimeList**, then click **Authorize MAL**.
-Your browser will open — authorize the app. MAL redirects to `http://localhost/?code=XXXX` — the page won't load, that's expected. Copy the `code=` value from the address bar and paste it into the dialog.
+Open **Settings**, paste the Client ID under **MyAnimeList**.
+- If you created a `web` app, check **"My app is App Type web"** and paste the Client Secret too.
+- If you created an `other` app, leave the checkbox unchecked.
+
+Then click **Authorize MAL** — your browser will open, authorize the app. MAL redirects to `http://localhost/?code=XXXX` — the page won't load, that's expected. Copy the `code=` value (not the access token) from the address bar and paste it into the dialog.
 
 Click **Save Settings**. The MAL card in the Export tab will turn green.
+
+> **Note:** mixing them up causes an authentication error — a `web` app without its Client Secret (or vice versa) will fail the token exchange.
 
 From now on the export runs without any browser interaction.
 
