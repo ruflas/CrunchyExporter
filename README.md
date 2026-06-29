@@ -59,6 +59,12 @@ See the [build instructions](#building-from-source) at the bottom of this page.
 
 ---
 
+## Video Tutorial
+
+<video src="vid/Crunchyexportertutorial.mp4" controls width="700"></video>
+
+---
+
 ## Step 1 — Get your Crunchyroll session cookie
 
 CrunchyExporter authenticates using the `etp_rt` session cookie from your browser. No password is stored or required.
