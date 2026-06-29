@@ -2,6 +2,7 @@ import webbrowser
 import customtkinter as ctk
 
 from gui import i18n
+from gui.version import __version__, RELEASES_URL
 
 
 class ConfigTab:
@@ -144,6 +145,16 @@ class ConfigTab:
             f, text=i18n.t("btn_save"), height=38, command=self._save,
         ).grid(row=1, column=0, sticky="ew", padx=10, pady=10)
 
+        # ---- Version (bottom, unobtrusive, links to the releases page) ----
+        self._version_lbl = ctk.CTkLabel(
+            f, text=f"v{__version__}",
+            font=ctk.CTkFont(size=10),
+            text_color=("gray60", "gray50"),
+            cursor="hand2",
+        )
+        self._version_lbl.grid(row=2, column=0, sticky="e", padx=10, pady=(0, 6))
+        self._version_lbl.bind("<Button-1>", lambda e: webbrowser.open(RELEASES_URL))
+
     # ------------------------------------------------------------------ load / save
 
     def _load_values(self) -> None:
@@ -216,6 +227,14 @@ class ConfigTab:
         from tkinter import messagebox
         messagebox.showinfo(i18n.t("settings_saved_title"),
                             i18n.t("settings_saved_msg"))
+
+    def set_update_available(self, tag: str) -> None:
+        """Called from App once the background update check finishes (if a
+        newer release was found). Clicking still opens the releases page."""
+        self._version_lbl.configure(
+            text=i18n.t("settings_update_available", current=__version__, latest=tag),
+            text_color=("#b06a00", "#e0a030"),
+        )
 
     def _toggle_mal_secret(self) -> None:
         e = self._entries["mal.client_secret"]

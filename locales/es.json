@@ -192,5 +192,6 @@
   "settings_tray_enabled": "Activar bandeja del sistema (minimizar en segundo plano al cerrar)",
   "settings_tray_note": "Cuando esta activado, cerrar la ventana mantiene la app en el area de notificacion. Usa 'Salir' desde el icono del tray para cerrar completamente.",
   "settings_saved_title": "Guardado",
-  "settings_saved_msg": "Ajustes guardados correctamente."
+  "settings_saved_msg": "Ajustes guardados correctamente.",
+  "settings_update_available": "v{current} → {latest} disponible"
 }

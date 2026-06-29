@@ -30,6 +30,7 @@ class App(ctk.CTk):
         self._set_icon()
         self._build_ui()
         self._setup_tray()
+        self._check_for_update()
 
     # ------------------------------------------------------------------ config
 
@@ -101,6 +102,19 @@ class App(ctk.CTk):
             self.iconphoto(True, self._icon_photo)
         except Exception:
             pass
+
+    # ------------------------------------------------------------------ update check
+
+    def _check_for_update(self) -> None:
+        import threading
+
+        def worker():
+            from gui.update_check import check_for_update
+            tag = check_for_update()
+            if tag:
+                self.after(0, lambda: self.tab_config.set_update_available(tag))
+
+        threading.Thread(target=worker, daemon=True).start()
 
     # ------------------------------------------------------------------ UI
 

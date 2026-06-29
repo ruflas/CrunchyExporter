@@ -192,5 +192,6 @@
   "settings_tray_enabled": "Enable system tray (minimize to background on close)",
   "settings_tray_note": "When enabled, closing the window keeps the app running in the notification area. Use 'Exit' from the tray icon to fully quit.",
   "settings_saved_title": "Saved",
-  "settings_saved_msg": "Settings saved successfully."
+  "settings_saved_msg": "Settings saved successfully.",
+  "settings_update_available": "v{current} → {latest} available"
 }

@@ -5,6 +5,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.3.0] — 2026-06-29
+
+### Fixed
+- **AniList/MAL export — wrong season overwritten**: Crunchyroll rarely puts
+  the season number in the episode title, so exporting season 2+ of a show
+  always matched and overwrote season 1's AniList/MAL entry. The exporter
+  now follows the sequel relation chain to resolve the correct season entry.
+- **AniList/MAL export — progress could be overwritten with stale data**:
+  exports now check the existing remote progress first and skip the series
+  instead of writing a lower episode count or status.
+
+### Added
+- **Export preview & confirmation**: before writing to AniList/MAL, a dry-run
+  pass shows exactly what would change. Confirmation is a non-modal panel
+  under the log (not a blocking dialog), so the log stays scrollable while
+  reviewing.
+- **"Only since" date filter**: optionally export only episodes watched on
+  or after a given date — useful if older history is already tracked
+  elsewhere (e.g. MALSync).
+- **My Library — manual edit**: a pencil button per series opens an editor
+  for title, season number and progress. Saved corrections are stored
+  separately from the raw watch history and can be reverted.
+- **Settings tab — version footer**: shows the current app version at the
+  bottom, linking to the GitHub releases page.
+
+---
+
 ## [1.2.0] — 2026-06-19
 
 ### Added
