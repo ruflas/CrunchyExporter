@@ -8,6 +8,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [1.3.0] — 2026-06-29
 
 ### Fixed
+- **Multi-season shows collapsed into one My Library entry**: Crunchyroll
+  reuses the same internal `series_id` across every season of a show — only
+  `season_number` tells them apart. Local history grouping only looked at
+  `series_id`, so a multi-season show (e.g. *The Rising of the Shield Hero*)
+  merged all of its seasons into one combined entry with progress computed
+  across the wrong combined set of episodes. Each season now gets its own
+  entry and its own correct progress.
 - **AniList/MAL export — wrong season overwritten**: Crunchyroll rarely puts
   the season number in the episode title, so exporting season 2+ of a show
   always matched and overwrote season 1's AniList/MAL entry. The exporter
@@ -15,8 +22,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **AniList/MAL export — progress could be overwritten with stale data**:
   exports now check the existing remote progress first and skip the series
   instead of writing a lower episode count or status.
-
-### Fixed
 - **MAL export — search fails on long titles**: MAL's `/anime` search
   rejects queries past ~64 characters with `400 invalid q`, which happened
   routinely with Crunchyroll's long English subtitles (e.g. "Hensuki - Are
