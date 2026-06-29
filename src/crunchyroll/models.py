@@ -41,6 +41,7 @@ class Episode:
 class SeriesSummary:
     series_id: str
     series_title: str
+    season_number: int = 1
     episodes_watched: list[int] = field(default_factory=list)
     max_episode: int = 0
     first_watched_at: Optional[str] = None  # ISO-8601 date of earliest episode

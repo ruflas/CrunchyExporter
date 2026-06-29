@@ -14,8 +14,14 @@ class MALXMLExporter(BaseExporter):
     def __init__(self, output_path: str | Path = "data/animelist.xml"):
         self.output_path = Path(output_path)
 
-    def export(self, series: list[SeriesSummary]) -> ExportResult:
+    def export(self, series: list[SeriesSummary], dry_run: bool = False) -> ExportResult:
         result = ExportResult()
+        if dry_run:
+            # Local file write only — nothing remote to preview/protect.
+            for s in series:
+                result.planned.append((s.series_title, f"write {s.max_episode}ep to XML"))
+            return result
+
         root = ET.Element("myanimelist")
 
         info = ET.SubElement(root, "myinfo")

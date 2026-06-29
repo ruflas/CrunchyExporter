@@ -30,6 +30,14 @@ def _patch_resp():
     return resp
 
 
+def _status_resp(status=None):
+    """Response for the my_list_status lookup export() does before writing."""
+    resp = MagicMock()
+    resp.ok = True
+    resp.json.return_value = {"my_list_status": status} if status else {}
+    return resp
+
+
 def _exporter():
     e = MALExporter.__new__(MALExporter)
     e.session = MagicMock()
@@ -51,7 +59,9 @@ class TestMALExportHTTPErrors:
     def test_search_error_on_one_continues_rest(self):
         e = _exporter()
         node = {"id": 1, "title": "Anime B", "num_episodes": 12, "media_type": "tv"}
-        e.session.get.side_effect = [_err_resp(401), _ok_resp([node])]
+        # Third response is for the my_list_status check export() does before
+        # writing (no current entry -> proceeds with the update normally).
+        e.session.get.side_effect = [_err_resp(401), _ok_resp([node]), _status_resp()]
         e.session.patch.return_value = _patch_resp()
 
         result = e.export([_series("Anime A", "s1"), _series("Anime B", "s2", ep=12)])
@@ -100,7 +110,7 @@ class TestMALExportHTTPErrors:
     def test_rate_limit_429_marks_failed_continues(self):
         e = _exporter()
         node = {"id": 1, "title": "B", "num_episodes": 12, "media_type": "tv"}
-        e.session.get.side_effect = [_err_resp(429), _ok_resp([node])]
+        e.session.get.side_effect = [_err_resp(429), _ok_resp([node]), _status_resp()]
         e.session.patch.return_value = _patch_resp()
 
         result = e.export([_series("A", "s1"), _series("B", "s2", ep=12)])

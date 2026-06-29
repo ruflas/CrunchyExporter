@@ -67,11 +67,40 @@ class ExportTab:
             command=self._on_export)
         self._export_btn.pack(side="left")
 
+        ctk.CTkLabel(btn_row, text=i18n.t("export_since_label"),
+                     anchor="w").pack(side="left", padx=(16, 4))
+        self._since_entry = ctk.CTkEntry(btn_row, placeholder_text="YYYY-MM-DD", width=110)
+        self._since_entry.insert(0, self.app.cfg.get("export_since", "") or "")
+        self._since_entry.pack(side="left")
+
         ctk.CTkLabel(bottom, text=i18n.t("export_progress_label") + ":",
                      anchor="w").grid(row=0, column=0, sticky="e")
 
         self._log = LogBox(bottom, height=260)
         self._log.grid(row=1, column=0, sticky="nsew", pady=(0, 4))
+
+        # ── Inline confirm row (non-modal) ─────────────────────────────────
+        # Shown after the AniList/MAL preview pass. Deliberately NOT a modal
+        # dialog: the user needs to scroll the log above to review the
+        # planned changes while deciding, which a blocking messagebox would
+        # prevent.
+        self._confirm_row = ctk.CTkFrame(bottom, fg_color=("gray85", "gray20"), corner_radius=8)
+        self._confirm_row.columnconfigure(0, weight=1)
+        self._confirm_label = ctk.CTkLabel(
+            self._confirm_row, text="", anchor="w", justify="left", wraplength=560)
+        self._confirm_label.grid(row=0, column=0, sticky="ew", padx=12, pady=(10, 6))
+
+        confirm_btns = ctk.CTkFrame(self._confirm_row, fg_color="transparent")
+        confirm_btns.grid(row=1, column=0, sticky="w", padx=12, pady=(0, 10))
+        self._confirm_yes_btn = ctk.CTkButton(confirm_btns, text=i18n.t("export_confirm_yes"), width=120)
+        self._confirm_yes_btn.pack(side="left", padx=(0, 8))
+        self._confirm_no_btn = ctk.CTkButton(
+            confirm_btns, text=i18n.t("export_confirm_no"), width=120,
+            fg_color=("gray65", "gray35"), hover_color=("gray55", "gray28"))
+        self._confirm_no_btn.pack(side="left")
+
+        self._confirm_row.grid(row=2, column=0, sticky="ew", pady=(0, 4))
+        self._confirm_row.grid_remove()
 
     # ------------------------------------------------------------------ status refresh
 
@@ -217,6 +246,20 @@ class ExportTab:
         if not targets:
             return
 
+        since = self._since_entry.get().strip()
+        if since:
+            try:
+                from datetime import datetime
+                datetime.strptime(since, "%Y-%m-%d")
+            except ValueError:
+                messagebox.showerror("Error", i18n.t("export_since_invalid"))
+                return
+        else:
+            since = None
+
+        self.app.cfg["export_since"] = since or ""
+        self.app.save_config()
+
         self._log.clear()
         self._set_busy(True)
 
@@ -231,9 +274,37 @@ class ExportTab:
 
         threading.Thread(
             target=_export_worker,
-            args=(targets, self.app.cfg, self.app.data_root, log_cb, on_done),
+            args=(targets, self.app.cfg, self.app.data_root, log_cb, on_done,
+                  self._show_confirm_inline, since),
             daemon=True,
         ).start()
+
+    def _show_confirm_inline(self, title: str, message: str) -> bool:
+        """
+        Ask the user to confirm before writing to AniList/MAL, without a
+        modal dialog: shows Confirm/Cancel buttons under the log so the
+        user can keep scrolling the log to review the planned changes
+        while deciding. Called from the worker (background) thread; blocks
+        it until the user clicks one of the buttons on the main thread.
+        """
+        event = threading.Event()
+        outcome = {"ok": False}
+
+        def show():
+            self._confirm_label.configure(text=f"{title}\n\n{message}")
+
+            def answer(ok: bool):
+                outcome["ok"] = ok
+                self._confirm_row.grid_remove()
+                event.set()
+
+            self._confirm_yes_btn.configure(command=lambda: answer(True))
+            self._confirm_no_btn.configure(command=lambda: answer(False))
+            self._confirm_row.grid()
+
+        self.frame.after(0, show)
+        event.wait()
+        return outcome["ok"]
 
 
 # ------------------------------------------------------------------ TargetCard widget
@@ -290,7 +361,7 @@ class _TargetCard(ctk.CTkFrame):
 
 # ------------------------------------------------------------------ background worker
 
-def _export_worker(targets, cfg, data_root, log, done):
+def _export_worker(targets, cfg, data_root, log, done, confirm=None, since=None):
     try:
         from src.storage.history_store import HistoryStore
         from src.storage.export_log import ExportLog
@@ -313,10 +384,45 @@ def _export_worker(targets, cfg, data_root, log, done):
         done(False)
         return
 
-    summaries = store.series_summaries()
+    summaries = store.series_summaries(since=since)
+    if since:
+        log(i18n.t("export_log_since", date=since), "info")
     log(i18n.t("export_log_start", count=len(summaries)), "info")
 
     export_log = ExportLog(data_root / "data" / "export_log.json")
+
+    # ── Preview pass: AniList/MAL write to a real remote account, so run a
+    # dry_run first, show the user exactly what would change, and let them
+    # cancel before anything is actually written. XML is a local file the
+    # user can always inspect/discard, so it skips the confirmation step.
+    remote_targets = [t for t in targets if t in ("anilist", "mal")]
+    if remote_targets and confirm is not None:
+        log(i18n.t("export_log_preview_start"), "info")
+        n_changes = n_skipped = n_failed = 0
+        for target in remote_targets:
+            token = cfg.get("exporters", {}).get(target, {}).get("access_token", "")
+            if not token:
+                continue
+            exporter = AniListExporter(token) if target == "anilist" else MALExporter(token)
+            try:
+                preview = exporter.export(summaries, dry_run=True)
+            except Exception as e:
+                log(i18n.t("export_log_anilist_error" if target == "anilist"
+                           else "export_log_mal_error", error=e), "error")
+                continue
+            for title, change in preview.planned:
+                log(i18n.t("export_log_preview_item", title=title, change=change), "info")
+            n_changes += len(preview.planned)
+            n_skipped += len(preview.skipped)
+            n_failed += len(preview.failed)
+
+        if n_changes == 0:
+            log(i18n.t("export_log_preview_none"), "info")
+        elif not confirm(i18n.t("export_confirm_title"),
+                          i18n.t("export_confirm_msg", changes=n_changes,
+                                 skipped=n_skipped, failed=n_failed)):
+            log(i18n.t("export_log_cancelled"), "warn")
+            targets = [t for t in targets if t not in ("anilist", "mal")]
 
     for target in targets:
         if target == "xml":

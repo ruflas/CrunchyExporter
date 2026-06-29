@@ -21,6 +21,12 @@ crunchyroll:
   client_id: ""
   client_secret: ""
 
+# Optional: only export episodes watched on/after this date (YYYY-MM-DD).
+# Useful if older history is already tracked elsewhere (e.g. MALSync) and you
+# only want Crunchyroll syncs to affect what you watched from this date on.
+# Leave empty to export full history. Also editable from the Export tab.
+export_since: ""
+
 exporters:
 
   # --- MAL XML (no authentication required) ---

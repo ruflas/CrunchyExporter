@@ -44,7 +44,7 @@ class MALExporter(BaseExporter):
 
     _SERIES_TYPES = {"tv", "ona", "ova"}
 
-    def search_anime(self, series_id: str, title: str) -> dict | None:
+    def _search_title(self, title: str) -> dict | None:
         resp = self.session.get(
             f"{MAL_API_BASE}/anime",
             params={"q": title, "limit": 5, "fields": "id,title,num_episodes,media_type"},
@@ -63,6 +63,52 @@ class MALExporter(BaseExporter):
             if item.get("media_type", "").lower() in self._SERIES_TYPES:
                 return item
         return items[0]
+
+    def _next_sequel(self, anime_id: int) -> dict | None:
+        """Follow the 'sequel' relation edge from an anime entry, if any."""
+        resp = self.session.get(
+            f"{MAL_API_BASE}/anime/{anime_id}",
+            params={"fields": "id,title,num_episodes,media_type,related_anime"},
+            timeout=10,
+        )
+        if not resp.ok:
+            return None
+        for rel in resp.json().get("related_anime", []):
+            if rel.get("relation_type") == "sequel":
+                return rel.get("node")
+        return None
+
+    def search_anime(self, series_id: str, title: str, season_number: int = 1) -> dict | None:
+        """
+        Crunchyroll rarely puts the season number in the episode title, so a
+        plain title search always lands on season 1's MAL entry. When we know
+        this is season N (N>1), walk the 'sequel' relation chain from the
+        season-1 match to find the entry that actually corresponds to it.
+        """
+        base = self._search_title(title)
+        if not base:
+            return None
+
+        anime = base
+        hops = max(0, season_number - 1)
+        for _ in range(hops):
+            nxt = self._next_sequel(anime["id"])
+            if not nxt:
+                # Couldn't follow the chain far enough — better to fail loudly
+                # than silently overwrite the wrong (earlier) season's entry.
+                return None
+            anime = nxt
+        return anime
+
+    def _current_status(self, anime_id: int) -> dict | None:
+        resp = self.session.get(
+            f"{MAL_API_BASE}/anime/{anime_id}",
+            params={"fields": "my_list_status"},
+            timeout=10,
+        )
+        if not resp.ok:
+            return None
+        return resp.json().get("my_list_status")
 
     def _determine_status(self, series: SeriesSummary, total_episodes: int) -> str:
         if total_episodes and series.max_episode >= total_episodes:
@@ -98,15 +144,41 @@ class MALExporter(BaseExporter):
             timeout=10,
         ).raise_for_status()
 
-    def export(self, series: list[SeriesSummary]) -> ExportResult:
+    def export(self, series: list[SeriesSummary], dry_run: bool = False) -> ExportResult:
         result = ExportResult()
         for s in series:
             try:
-                anime = self.search_anime(s.series_id, s.series_title)
+                anime = self.search_anime(s.series_id, s.series_title, s.season_number)
                 if not anime:
                     result.failed.append((s.series_title, "Not found on MyAnimeList"))
                     continue
+
                 status = self._determine_status(s, anime.get("num_episodes", 0))
+                new_progress = s.max_episode
+                current = self._current_status(anime["id"])
+                old_progress = (current or {}).get("num_episodes_watched", 0)
+
+                # Never let a sync regress progress that's already logged —
+                # this is what protects manually-curated or MALSync-imported
+                # entries from being overwritten with stale/wrong numbers.
+                if current and old_progress >= new_progress:
+                    if dry_run:
+                        result.planned.append((
+                            s.series_title,
+                            f"skip — remote progress {old_progress} "
+                            f">= Crunchyroll progress {new_progress}",
+                        ))
+                    result.skipped.append(s.series_title)
+                    continue
+
+                if dry_run:
+                    old_status = (current or {}).get("status", "—")
+                    result.planned.append((
+                        s.series_title,
+                        f"{old_status} {old_progress}ep -> {status} {new_progress}ep",
+                    ))
+                    continue
+
                 self._update_list(anime["id"], status, s)
                 result.updated.append(s.series_title)
             except Exception as e:

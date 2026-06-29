@@ -40,13 +40,23 @@ class HistoryStore:
     def all_episodes(self) -> list[Episode]:
         return [Episode.from_dict(ep) for ep in self._data["episodes"]]
 
-    def series_summaries(self) -> list[SeriesSummary]:
+    def series_summaries(self, since: Optional[str] = None) -> list[SeriesSummary]:
+        """
+        since: ISO date/datetime string (e.g. "2026-01-01"). When set, episodes
+        watched before this date are excluded — lets users who already track
+        older history elsewhere (MALSync, manual entries) only sync what they
+        watched on Crunchyroll from that point on. Episodes with no watched_at
+        timestamp are kept (can't be filtered reliably).
+        """
         summaries: dict[str, SeriesSummary] = {}
         for ep in self.all_episodes():
+            if since and ep.watched_at and ep.watched_at < since:
+                continue
             if ep.series_id not in summaries:
                 summaries[ep.series_id] = SeriesSummary(
                     series_id=ep.series_id,
                     series_title=ep.series_title,
+                    season_number=ep.season_number,
                 )
             s = summaries[ep.series_id]
             ep_num = int(ep.episode_number)
@@ -65,7 +75,39 @@ class HistoryStore:
             if s.max_episode == 0 and s.total_watched > 0:
                 s.max_episode = 1
 
+        # Manual corrections (e.g. from the "My Library" edit dialog) take
+        # priority over what was computed from raw Crunchyroll episodes —
+        # this is how a wrong season/title/progress gets fixed without
+        # touching (or losing) the underlying watch history.
+        for series_id, override in self._data.get("overrides", {}).items():
+            s = summaries.get(series_id)
+            if not s:
+                continue
+            if override.get("title") is not None:
+                s.series_title = override["title"]
+            if override.get("season_number") is not None:
+                s.season_number = override["season_number"]
+            if override.get("max_episode") is not None:
+                s.max_episode = override["max_episode"]
+
         return list(summaries.values())
+
+    def set_override(self, series_id: str, *, title: Optional[str] = None,
+                      season_number: Optional[int] = None,
+                      max_episode: Optional[int] = None) -> None:
+        """Manually pin a series' title/season/progress, overriding whatever
+        gets computed from the raw episode history. Used by the GUI's
+        "My Library" edit dialog."""
+        self._data.setdefault("overrides", {})[series_id] = {
+            "title": title,
+            "season_number": season_number,
+            "max_episode": max_episode,
+        }
+        self.save()
+
+    def clear_override(self, series_id: str) -> None:
+        self._data.get("overrides", {}).pop(series_id, None)
+        self.save()
 
     @property
     def last_sync(self) -> Optional[str]:

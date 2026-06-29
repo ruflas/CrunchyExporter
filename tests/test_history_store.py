@@ -53,6 +53,67 @@ class TestSeriesSummaries:
         s = store.series_summaries()[0]
         assert s.last_watched_at == "2024-03-15T00:00:00+00:00"
 
+    def test_season_number_is_carried_to_summary(self, store):
+        store.update([Episode(
+            series_id="s2", series_title="Shield Hero", season_number=2,
+            episode_number=1, episode_title="e1", episode_id="s2-1",
+        )])
+        s = store.series_summaries()[0]
+        assert s.season_number == 2
+
+    def test_since_excludes_earlier_episodes(self, store):
+        store.update([
+            _ep("s1", ep_num=1, watched="2024-01-01T00:00:00+00:00"),
+            _ep("s1", ep_num=25, watched="2024-02-01T00:00:00+00:00"),
+        ])
+        summaries = store.series_summaries(since="2024-01-15")
+        assert summaries[0].max_episode == 25
+        assert summaries[0].episodes_watched == [25]
+
+    def test_since_drops_series_entirely_watched_before_cutoff(self, store):
+        store.update([_ep("s1", ep_num=1, watched="2023-01-01T00:00:00+00:00")])
+        assert store.series_summaries(since="2024-01-01") == []
+
+    def test_since_keeps_episodes_with_no_timestamp(self, store):
+        store.update([_ep("s1", ep_num=1, watched=None)])
+        summaries = store.series_summaries(since="2099-01-01")
+        assert len(summaries) == 1
+
+
+class TestOverrides:
+    def test_override_replaces_title_season_progress(self, store):
+        store.update([_ep("s1", "Shield Hero", ep_num=13)])
+        store.set_override("s1", title="The Rising of the Shield Hero Season 2",
+                            season_number=2, max_episode=13)
+        s = store.series_summaries()[0]
+        assert s.series_title == "The Rising of the Shield Hero Season 2"
+        assert s.season_number == 2
+        assert s.max_episode == 13
+
+    def test_override_persists_across_instances(self, store, tmp_path):
+        store.update([_ep("s1", ep_num=5)])
+        store.set_override("s1", title="Renamed", season_number=3, max_episode=10)
+        reloaded = HistoryStore(store.path)
+        s = reloaded.series_summaries()[0]
+        assert s.series_title == "Renamed"
+        assert s.season_number == 3
+        assert s.max_episode == 10
+
+    def test_override_for_unknown_series_is_ignored(self, store):
+        store.update([_ep("s1", ep_num=1)])
+        store.set_override("does-not-exist", title="X", season_number=1, max_episode=1)
+        s = store.series_summaries()[0]
+        assert s.series_id == "s1"
+
+    def test_clear_override_restores_computed_values(self, store):
+        store.update([_ep("s1", "Naruto", ep_num=5)])
+        store.set_override("s1", title="Wrong", season_number=9, max_episode=99)
+        store.clear_override("s1")
+        s = store.series_summaries()[0]
+        assert s.series_title == "Naruto"
+        assert s.season_number == 1
+        assert s.max_episode == 5
+
 
 class TestUpdate:
     def test_no_duplicates(self, store):

@@ -18,13 +18,27 @@ query ($search: String) {
 }
 """
 
-_ID_QUERY = """
+_RELATIONS_QUERY = """
 query ($id: Int) {
   Media(id: $id, type: ANIME) {
     id
     title { romaji english native }
     episodes
     status
+    relations {
+      edges {
+        relationType
+        node { id type title { romaji english native } episodes status }
+      }
+    }
+  }
+}
+"""
+
+_ENTRY_QUERY = """
+query ($id: Int) {
+  Media(id: $id, type: ANIME) {
+    mediaListEntry { progress status }
   }
 }
 """
@@ -81,19 +95,62 @@ class AniListExporter(BaseExporter):
             raise ValueError(data["errors"][0]["message"])
         return data["data"]
 
-    def search_anime(self, series_id: str, title: str) -> tuple[dict | None, str | None]:
+    def _search_title(self, title: str) -> dict | None:
         for candidate in dict.fromkeys([title, _normalize(title)]):
             try:
                 data = self._gql(_SEARCH_QUERY, {"search": candidate})
                 media = data.get("Media")
                 if media:
-                    return media, None
-            except ValueError as e:
-                return None, str(e)
-            except Exception as e:
-                return None, str(e)
+                    return media
+            except Exception:
+                pass
             time.sleep(0.6)
-        return None, "No match found"
+        return None
+
+    def _next_sequel(self, media_id: int) -> dict | None:
+        """Follow the SEQUEL relation edge from an anime entry, if any."""
+        data = self._gql(_RELATIONS_QUERY, {"id": media_id})
+        media = data.get("Media")
+        if not media:
+            return None
+        for edge in media.get("relations", {}).get("edges", []):
+            node = edge.get("node") or {}
+            if edge.get("relationType") == "SEQUEL" and node.get("type") == "ANIME":
+                return node
+        return None
+
+    def search_anime(self, series_id: str, title: str, season_number: int = 1) -> tuple[dict | None, str | None]:
+        """
+        Crunchyroll rarely puts the season number in the episode title, so a
+        plain title search always lands on season 1's AniList entry. When we
+        know this is season N (N>1), walk the SEQUEL relation chain from the
+        season-1 match to find the entry that actually corresponds to it.
+        """
+        base = self._search_title(title)
+        if not base:
+            return None, "No match found"
+
+        media = base
+        hops = max(0, season_number - 1)
+        for _ in range(hops):
+            nxt = self._next_sequel(media["id"])
+            if not nxt:
+                # Couldn't follow the chain far enough — better to fail loudly
+                # than silently overwrite the wrong (earlier) season's entry.
+                return None, (
+                    f"Season {season_number} requested but no sequel found "
+                    f"after '{media.get('title', {}).get('romaji', title)}'"
+                )
+            media = nxt
+            time.sleep(0.6)
+        return media, None
+
+    def _current_entry(self, media_id: int) -> dict | None:
+        try:
+            data = self._gql(_ENTRY_QUERY, {"id": media_id})
+            return (data.get("Media") or {}).get("mediaListEntry")
+        except Exception:
+            return None
 
     def _determine_status(self, series: SeriesSummary, total_episodes: int | None) -> str:
         if total_episodes and series.max_episode >= total_episodes:
@@ -111,19 +168,44 @@ class AniListExporter(BaseExporter):
         except Exception:
             return None
 
-    def export(self, series: list[SeriesSummary]) -> ExportResult:
+    def export(self, series: list[SeriesSummary], dry_run: bool = False) -> ExportResult:
         result = ExportResult()
         for s in series:
-            media, err = self.search_anime(s.series_id, s.series_title)
+            media, err = self.search_anime(s.series_id, s.series_title, s.season_number)
             if not media:
                 result.failed.append((s.series_title, err or "Not found"))
                 continue
             try:
                 status = self._determine_status(s, media.get("episodes"))
+                new_progress = s.max_episode
+                current = self._current_entry(media["id"])
+
+                # Never let a sync regress progress that's already logged —
+                # this is what protects manually-curated or MALSync-imported
+                # entries from being overwritten with stale/wrong numbers.
+                if current and current.get("progress", 0) >= new_progress:
+                    if dry_run:
+                        result.planned.append((
+                            s.series_title,
+                            f"skip — remote progress {current.get('progress', 0)} "
+                            f">= Crunchyroll progress {new_progress}",
+                        ))
+                    result.skipped.append(s.series_title)
+                    continue
+
+                if dry_run:
+                    old_progress = current.get("progress", 0) if current else 0
+                    old_status = current.get("status", "—") if current else "—"
+                    result.planned.append((
+                        s.series_title,
+                        f"{old_status} {old_progress}ep -> {status} {new_progress}ep",
+                    ))
+                    continue
+
                 variables = {
                     "mediaId": media["id"],
                     "status": status,
-                    "progress": s.max_episode,
+                    "progress": new_progress,
                 }
                 if status == "COMPLETED":
                     variables["completedAt"] = self._fuzzy_date(s.last_watched_at)
