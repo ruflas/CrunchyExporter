@@ -72,6 +72,7 @@
   "library_col_series": "Series",
   "library_col_eps": "Episodes Watched",
   "library_col_max": "Max Episode",
+  "library_season_suffix": "{title} (Season {season})",
   "library_empty": "No data yet — use the Sync tab to fetch your Crunchyroll history.",
   "library_edit_title": "Edit series",
   "library_edit_field_title": "Title:",

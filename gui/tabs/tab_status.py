@@ -101,11 +101,19 @@ class StatusTab:
             return
 
         for i, s in enumerate(
-            sorted(summaries, key=lambda x: x.series_title.lower()), start=1
+            sorted(summaries, key=lambda x: (x.series_title.lower(), x.season_number)),
+            start=1,
         ):
             row_fg = ("gray90", "gray18") if i % 2 == 0 else ("gray95", "gray22")
+            # Crunchyroll reuses the same series_id (and title) across
+            # seasons — show the season number so same-title rows are
+            # distinguishable instead of looking like duplicates.
+            display_title = (
+                s.series_title if s.season_number <= 1
+                else i18n.t("library_season_suffix", title=s.series_title, season=s.season_number)
+            )
             for col, (text, anchor) in enumerate([
-                (s.series_title,       "w"),
+                (display_title,        "w"),
                 (str(s.total_watched), "center"),
                 (str(s.max_episode),   "center"),
             ]):
