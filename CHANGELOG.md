@@ -16,11 +16,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   exports now check the existing remote progress first and skip the series
   instead of writing a lower episode count or status.
 
+### Fixed
+- **MAL export — search fails on long titles**: MAL's `/anime` search
+  rejects queries past ~64 characters with `400 invalid q`, which happened
+  routinely with Crunchyroll's long English subtitles (e.g. "Hensuki - Are
+  you willing to fall in love with a pervert, as long as she's a cutie?").
+  The search now retries with the part before a subtitle separator, then a
+  hard truncation, before giving up.
+- **Missing dependencies**: `click` and `rich` are used by the bundled
+  `src/main.py` (invoked by the Schedule tab when running from source) but
+  were never declared in `requirements.txt`, breaking scheduled syncs on a
+  fresh install.
+
 ### Added
 - **Export preview & confirmation**: before writing to AniList/MAL, a dry-run
   pass shows exactly what would change. Confirmation is a non-modal panel
   under the log (not a blocking dialog), so the log stays scrollable while
-  reviewing.
+  reviewing. You can apply every change at once, or review and
+  approve/skip each series individually per target.
 - **"Only since" date filter**: optionally export only episodes watched on
   or after a given date — useful if older history is already tracked
   elsewhere (e.g. MALSync).
@@ -28,7 +41,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   for title, season number and progress. Saved corrections are stored
   separately from the raw watch history and can be reverted.
 - **Settings tab — version footer**: shows the current app version at the
-  bottom, linking to the GitHub releases page.
+  bottom, linking to the GitHub releases page, and highlights when a newer
+  release is available (checked once on startup).
+- **Video tutorial** in the README.
 
 ---
 
