@@ -61,7 +61,11 @@ See the [build instructions](#building-from-source) at the bottom of this page.
 
 ## Video Tutorial
 
-<video src="vid/Crunchyexportertutorial.mp4" controls width="700"></video>
+
+
+https://github.com/user-attachments/assets/3ebb5d9f-7ede-40c6-b848-2cea60c46995
+
+
 
 ---
 
