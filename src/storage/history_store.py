@@ -48,17 +48,21 @@ class HistoryStore:
         watched on Crunchyroll from that point on. Episodes with no watched_at
         timestamp are kept (can't be filtered reliably).
         """
+        # Crunchyroll reuses the same series_id across every season of a show
+        # — only season_number tells them apart. Group by the pair, or every
+        # season collapses into a single (wrong) combined summary.
         summaries: dict[str, SeriesSummary] = {}
         for ep in self.all_episodes():
             if since and ep.watched_at and ep.watched_at < since:
                 continue
-            if ep.series_id not in summaries:
-                summaries[ep.series_id] = SeriesSummary(
-                    series_id=ep.series_id,
+            key = f"{ep.series_id}::{ep.season_number}"
+            if key not in summaries:
+                summaries[key] = SeriesSummary(
+                    series_id=key,
                     series_title=ep.series_title,
                     season_number=ep.season_number,
                 )
-            s = summaries[ep.series_id]
+            s = summaries[key]
             ep_num = int(ep.episode_number)
             if ep_num not in s.episodes_watched:
                 s.episodes_watched.append(ep_num)

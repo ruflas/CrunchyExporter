@@ -3,11 +3,11 @@ from src.storage.history_store import HistoryStore
 from src.crunchyroll.models import Episode
 
 
-def _ep(sid="s1", title="Naruto", ep_num=1, ep_id=None, watched=None, fully=False):
+def _ep(sid="s1", title="Naruto", ep_num=1, ep_id=None, watched=None, fully=False, season=1):
     return Episode(
         series_id=sid,
         series_title=title,
-        season_number=1,
+        season_number=season,
         episode_number=ep_num,
         episode_title=f"Episode {ep_num}",
         episode_id=ep_id or f"{sid}-{ep_num}",
@@ -25,7 +25,20 @@ class TestSeriesSummaries:
     def test_groups_by_series_id(self, store):
         store.update([_ep("s1", "Naruto", 1), _ep("s1", "Naruto", 2), _ep("s2", "Bleach", 1)])
         summaries = {s.series_id: s for s in store.series_summaries()}
-        assert set(summaries) == {"s1", "s2"}
+        assert set(summaries) == {"s1::1", "s2::1"}
+
+    def test_same_series_id_different_seasons_kept_separate(self, store):
+        # Crunchyroll reuses the same series_id across seasons of a show —
+        # this is what used to collapse Shield Hero's 3 seasons into one
+        # combined (wrong) entry.
+        store.update([
+            _ep("shield", "Shield Hero", ep_num=25, ep_id="s1e25", season=1),
+            _ep("shield", "Shield Hero", ep_num=13, ep_id="s2e13", season=2),
+        ])
+        summaries = {s.season_number: s for s in store.series_summaries()}
+        assert len(summaries) == 2
+        assert summaries[1].max_episode == 25
+        assert summaries[2].max_episode == 13
 
     def test_max_episode_is_highest(self, store):
         store.update([_ep("s1", ep_num=3), _ep("s1", ep_num=7), _ep("s1", ep_num=1)])
@@ -81,9 +94,13 @@ class TestSeriesSummaries:
 
 
 class TestOverrides:
+    # set_override() takes the SeriesSummary.series_id (the composite
+    # "raw_id::season" key), exactly what the GUI passes from the row being
+    # edited — not the raw Crunchyroll series_id.
+
     def test_override_replaces_title_season_progress(self, store):
         store.update([_ep("s1", "Shield Hero", ep_num=13)])
-        store.set_override("s1", title="The Rising of the Shield Hero Season 2",
+        store.set_override("s1::1", title="The Rising of the Shield Hero Season 2",
                             season_number=2, max_episode=13)
         s = store.series_summaries()[0]
         assert s.series_title == "The Rising of the Shield Hero Season 2"
@@ -92,7 +109,7 @@ class TestOverrides:
 
     def test_override_persists_across_instances(self, store, tmp_path):
         store.update([_ep("s1", ep_num=5)])
-        store.set_override("s1", title="Renamed", season_number=3, max_episode=10)
+        store.set_override("s1::1", title="Renamed", season_number=3, max_episode=10)
         reloaded = HistoryStore(store.path)
         s = reloaded.series_summaries()[0]
         assert s.series_title == "Renamed"
@@ -103,12 +120,12 @@ class TestOverrides:
         store.update([_ep("s1", ep_num=1)])
         store.set_override("does-not-exist", title="X", season_number=1, max_episode=1)
         s = store.series_summaries()[0]
-        assert s.series_id == "s1"
+        assert s.series_id == "s1::1"
 
     def test_clear_override_restores_computed_values(self, store):
         store.update([_ep("s1", "Naruto", ep_num=5)])
-        store.set_override("s1", title="Wrong", season_number=9, max_episode=99)
-        store.clear_override("s1")
+        store.set_override("s1::1", title="Wrong", season_number=9, max_episode=99)
+        store.clear_override("s1::1")
         s = store.series_summaries()[0]
         assert s.series_title == "Naruto"
         assert s.season_number == 1
@@ -139,7 +156,7 @@ class TestReplace:
         store.update([_ep("s1", ep_num=1, ep_id="e1"), _ep("s1", ep_num=2, ep_id="e2")])
         store.replace([_ep("s2", ep_num=1, ep_id="e3")])
         assert len(store) == 1
-        assert store.series_summaries()[0].series_id == "s2"
+        assert store.series_summaries()[0].series_id == "s2::1"
 
     def test_updates_last_sync(self, store):
         assert store.last_sync is None
