@@ -7,8 +7,12 @@ class ExportResult:
         self.updated: list[str] = []
         self.skipped: list[str] = []
         self.failed: list[tuple[str, str]] = []
-        # dry_run only: (title, human-readable description of the change that would be made)
-        self.planned: list[tuple[str, str]] = []
+        # dry_run only: (series_id, title, human-readable description of the
+        # change, actionable). actionable=False means this entry is informational
+        # only (e.g. already up to date) and will be skipped regardless of
+        # approval — used by the GUI to decide what needs a yes/no decision
+        # in the per-series review flow.
+        self.planned: list[tuple[str, str, str, bool]] = []
 
     @property
     def total(self) -> int:

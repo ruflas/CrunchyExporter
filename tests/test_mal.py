@@ -38,6 +38,15 @@ def _status_resp(status=None):
     return resp
 
 
+def _invalid_q_resp():
+    """MAL's response when the search `q` is rejected (e.g. too long)."""
+    resp = MagicMock()
+    resp.ok = False
+    resp.status_code = 400
+    resp.json.return_value = {"message": "invalid q", "error": "bad_request"}
+    return resp
+
+
 def _exporter():
     e = MALExporter.__new__(MALExporter)
     e.session = MagicMock()
@@ -117,6 +126,50 @@ class TestMALExportHTTPErrors:
 
         assert result.failed[0][0] == "A"
         assert result.updated[0] == "B"
+
+
+class TestTitleCandidates:
+    LONG_TITLE = ("Hensuki - Are you willing to fall in love with a pervert, "
+                  "as long as she's a cutie?")
+
+    def test_full_title_tried_first(self):
+        assert MALExporter._title_candidates(self.LONG_TITLE)[0] == self.LONG_TITLE
+
+    def test_falls_back_to_part_before_dash(self):
+        assert "Hensuki" in MALExporter._title_candidates(self.LONG_TITLE)
+
+    def test_short_title_has_no_fallback(self):
+        assert MALExporter._title_candidates("Naruto") == ["Naruto"]
+
+    def test_long_title_without_separator_gets_truncated(self):
+        long_title = "A" * 100
+        candidates = MALExporter._title_candidates(long_title)
+        assert len(candidates[-1]) <= MALExporter._MAX_QUERY_LEN
+
+
+class TestSearchFallsBackOnInvalidQ:
+    def test_long_title_retries_with_short_candidate(self):
+        e = _exporter()
+        long_title = TestTitleCandidates.LONG_TITLE
+        node = {"id": 1, "title": "Hensuki", "num_episodes": 12, "media_type": "tv"}
+        e.session.get.side_effect = [_invalid_q_resp(), _ok_resp([node]), _status_resp()]
+        e.session.patch.return_value = _patch_resp()
+
+        result = e.export([_series(long_title, ep=2)])
+
+        assert result.updated == [long_title]
+        assert result.failed == []
+        second_call_params = e.session.get.call_args_list[1].kwargs["params"]
+        assert second_call_params["q"] == "Hensuki"
+
+    def test_all_candidates_invalid_q_returns_not_found(self):
+        e = _exporter()
+        e.session.get.return_value = _invalid_q_resp()
+
+        result = e.export([_series(TestTitleCandidates.LONG_TITLE)])
+
+        assert result.updated == []
+        assert "Not found" in result.failed[0][1]
 
 
 class TestDetermineStatus:

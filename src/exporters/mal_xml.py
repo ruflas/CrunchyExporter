@@ -19,7 +19,7 @@ class MALXMLExporter(BaseExporter):
         if dry_run:
             # Local file write only — nothing remote to preview/protect.
             for s in series:
-                result.planned.append((s.series_title, f"write {s.max_episode}ep to XML"))
+                result.planned.append((s.series_id, s.series_title, f"write {s.max_episode}ep to XML", True))
             return result
 
         root = ET.Element("myanimelist")

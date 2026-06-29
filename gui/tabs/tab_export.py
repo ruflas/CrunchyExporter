@@ -80,10 +80,10 @@ class ExportTab:
         self._log.grid(row=1, column=0, sticky="nsew", pady=(0, 4))
 
         # ── Inline confirm row (non-modal) ─────────────────────────────────
-        # Shown after the AniList/MAL preview pass. Deliberately NOT a modal
-        # dialog: the user needs to scroll the log above to review the
-        # planned changes while deciding, which a blocking messagebox would
-        # prevent.
+        # Shown after the AniList/MAL preview pass, and reused for the
+        # per-series review flow. Deliberately NOT a modal dialog: the user
+        # needs to scroll the log above to review the planned changes while
+        # deciding, which a blocking messagebox would prevent.
         self._confirm_row = ctk.CTkFrame(bottom, fg_color=("gray85", "gray20"), corner_radius=8)
         self._confirm_row.columnconfigure(0, weight=1)
         self._confirm_label = ctk.CTkLabel(
@@ -92,12 +92,19 @@ class ExportTab:
 
         confirm_btns = ctk.CTkFrame(self._confirm_row, fg_color="transparent")
         confirm_btns.grid(row=1, column=0, sticky="w", padx=12, pady=(0, 10))
-        self._confirm_yes_btn = ctk.CTkButton(confirm_btns, text=i18n.t("export_confirm_yes"), width=120)
-        self._confirm_yes_btn.pack(side="left", padx=(0, 8))
-        self._confirm_no_btn = ctk.CTkButton(
-            confirm_btns, text=i18n.t("export_confirm_no"), width=120,
+        # Up to 3 buttons, repurposed (label/command/visibility) per question
+        # by _ask_inline() — primary action first, then secondary, then the
+        # "decline" option last.
+        self._confirm_btn_1 = ctk.CTkButton(confirm_btns, width=150)
+        self._confirm_btn_1.pack(side="left", padx=(0, 8))
+        self._confirm_btn_2 = ctk.CTkButton(
+            confirm_btns, width=150,
             fg_color=("gray65", "gray35"), hover_color=("gray55", "gray28"))
-        self._confirm_no_btn.pack(side="left")
+        self._confirm_btn_2.pack(side="left", padx=(0, 8))
+        self._confirm_btn_3 = ctk.CTkButton(
+            confirm_btns, width=150,
+            fg_color=("gray65", "gray35"), hover_color=("gray55", "gray28"))
+        self._confirm_btn_3.pack(side="left")
 
         self._confirm_row.grid(row=2, column=0, sticky="ew", pady=(0, 4))
         self._confirm_row.grid_remove()
@@ -275,36 +282,45 @@ class ExportTab:
         threading.Thread(
             target=_export_worker,
             args=(targets, self.app.cfg, self.app.data_root, log_cb, on_done,
-                  self._show_confirm_inline, since),
+                  self._ask_inline, since),
             daemon=True,
         ).start()
 
-    def _show_confirm_inline(self, title: str, message: str) -> bool:
+    def _ask_inline(self, title: str, message: str, options: list[tuple[str, str]]) -> str:
         """
-        Ask the user to confirm before writing to AniList/MAL, without a
-        modal dialog: shows Confirm/Cancel buttons under the log so the
-        user can keep scrolling the log to review the planned changes
-        while deciding. Called from the worker (background) thread; blocks
-        it until the user clicks one of the buttons on the main thread.
+        Ask the user a question with 2-3 choices, without a modal dialog:
+        shows the message + buttons under the log so the user can keep
+        scrolling the log to review planned changes while deciding.
+        Called from the worker (background) thread; blocks it until the
+        user clicks one of the buttons on the main thread.
+
+        options: list of (key, label) pairs, in display order. Returns the
+        key of whichever the user clicked.
         """
         event = threading.Event()
-        outcome = {"ok": False}
+        outcome = {"key": options[-1][0]}
 
         def show():
             self._confirm_label.configure(text=f"{title}\n\n{message}")
 
-            def answer(ok: bool):
-                outcome["ok"] = ok
+            buttons = [self._confirm_btn_1, self._confirm_btn_2, self._confirm_btn_3]
+            for btn in buttons:
+                btn.pack_forget()
+
+            def answer(key: str):
+                outcome["key"] = key
                 self._confirm_row.grid_remove()
                 event.set()
 
-            self._confirm_yes_btn.configure(command=lambda: answer(True))
-            self._confirm_no_btn.configure(command=lambda: answer(False))
+            for btn, (key, label) in zip(buttons, options):
+                btn.configure(text=label, command=lambda k=key: answer(k))
+                btn.pack(side="left", padx=(0, 8))
+
             self._confirm_row.grid()
 
         self.frame.after(0, show)
         event.wait()
-        return outcome["ok"]
+        return outcome["key"]
 
 
 # ------------------------------------------------------------------ TargetCard widget
@@ -361,7 +377,7 @@ class _TargetCard(ctk.CTkFrame):
 
 # ------------------------------------------------------------------ background worker
 
-def _export_worker(targets, cfg, data_root, log, done, confirm=None, since=None):
+def _export_worker(targets, cfg, data_root, log, done, ask=None, since=None):
     try:
         from src.storage.history_store import HistoryStore
         from src.storage.export_log import ExportLog
@@ -392,13 +408,18 @@ def _export_worker(targets, cfg, data_root, log, done, confirm=None, since=None)
     export_log = ExportLog(data_root / "data" / "export_log.json")
 
     # ── Preview pass: AniList/MAL write to a real remote account, so run a
-    # dry_run first, show the user exactly what would change, and let them
-    # cancel before anything is actually written. XML is a local file the
-    # user can always inspect/discard, so it skips the confirmation step.
+    # dry_run first, show the user exactly what would change, then ask
+    # whether to apply everything at once or review each series one by one.
+    # XML is a local file the user can always inspect/discard, so it's never
+    # part of this approval flow.
     remote_targets = [t for t in targets if t in ("anilist", "mal")]
-    if remote_targets and confirm is not None:
+    mode = "all"
+    approved: set[tuple[str, str]] = set()  # (target, series_id)
+
+    if remote_targets and ask is not None:
         log(i18n.t("export_log_preview_start"), "info")
-        n_changes = n_skipped = n_failed = 0
+        pending = []  # actionable items: dicts with target/series_id/title/change
+        n_skipped = n_failed = 0
         for target in remote_targets:
             token = cfg.get("exporters", {}).get(target, {}).get("access_token", "")
             if not token:
@@ -410,19 +431,46 @@ def _export_worker(targets, cfg, data_root, log, done, confirm=None, since=None)
                 log(i18n.t("export_log_anilist_error" if target == "anilist"
                            else "export_log_mal_error", error=e), "error")
                 continue
-            for title, change in preview.planned:
+            for series_id, title, change, actionable in preview.planned:
                 log(i18n.t("export_log_preview_item", title=title, change=change), "info")
-            n_changes += len(preview.planned)
+                if actionable:
+                    pending.append({"target": target, "series_id": series_id,
+                                     "title": title, "change": change})
             n_skipped += len(preview.skipped)
             n_failed += len(preview.failed)
 
-        if n_changes == 0:
+        if not pending:
             log(i18n.t("export_log_preview_none"), "info")
-        elif not confirm(i18n.t("export_confirm_title"),
-                          i18n.t("export_confirm_msg", changes=n_changes,
-                                 skipped=n_skipped, failed=n_failed)):
-            log(i18n.t("export_log_cancelled"), "warn")
-            targets = [t for t in targets if t not in ("anilist", "mal")]
+        else:
+            choice = ask(
+                i18n.t("export_confirm_title"),
+                i18n.t("export_confirm_msg", changes=len(pending),
+                       skipped=n_skipped, failed=n_failed),
+                [("all", i18n.t("export_confirm_all")),
+                 ("individual", i18n.t("export_confirm_individual")),
+                 ("cancel", i18n.t("export_confirm_no"))],
+            )
+            if choice == "cancel":
+                log(i18n.t("export_log_cancelled"), "warn")
+                targets = [t for t in targets if t not in ("anilist", "mal")]
+                mode = "cancel"
+            elif choice == "individual":
+                mode = "individual"
+                for p in pending:
+                    decision = ask(
+                        i18n.t("export_review_title"),
+                        i18n.t("export_review_msg", target=p["target"].upper(),
+                               title=p["title"], change=p["change"]),
+                        [("approve", i18n.t("export_review_approve")),
+                         ("skip", i18n.t("export_review_skip")),
+                         ("cancel", i18n.t("export_review_cancel_rest"))],
+                    )
+                    if decision == "approve":
+                        approved.add((p["target"], p["series_id"]))
+                    elif decision == "cancel":
+                        log(i18n.t("export_log_cancelled"), "warn")
+                        break
+                    # "skip" -> leave it out of approved, just move on
 
     for target in targets:
         if target == "xml":
@@ -439,15 +487,24 @@ def _export_worker(targets, cfg, data_root, log, done, confirm=None, since=None)
                            path=xml_p, count=len(result.updated)), "ok")
             except Exception as e:
                 log(i18n.t("export_log_xml_error", error=e), "error")
+            continue
 
-        elif target == "anilist":
+        target_summaries = summaries
+        if mode == "individual":
+            target_summaries = [s for s in summaries if (target, s.series_id) in approved]
+            if not target_summaries:
+                log(i18n.t("export_log_nothing_approved",
+                           target="AniList" if target == "anilist" else "MyAnimeList"), "warn")
+                continue
+
+        if target == "anilist":
             token = cfg.get("exporters", {}).get("anilist", {}).get("access_token", "")
             if not token:
                 log(i18n.t("export_log_no_token", target="AniList"), "warn")
                 continue
             log(i18n.t("export_log_anilist_start"), "info")
             try:
-                result = AniListExporter(token).export(summaries)
+                result = AniListExporter(token).export(target_summaries)
                 export_log.record("anilist", result)
                 log(i18n.t("export_log_anilist_ok",
                            updated=len(result.updated),
@@ -465,7 +522,7 @@ def _export_worker(targets, cfg, data_root, log, done, confirm=None, since=None)
                 continue
             log(i18n.t("export_log_mal_start"), "info")
             try:
-                result = MALExporter(token).export(summaries)
+                result = MALExporter(token).export(target_summaries)
                 export_log.record("mal", result)
                 log(i18n.t("export_log_mal_ok",
                            updated=len(result.updated),

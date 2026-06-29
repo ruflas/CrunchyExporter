@@ -43,26 +43,59 @@ class MALExporter(BaseExporter):
         self.session.headers.update({"Authorization": f"Bearer {access_token}"})
 
     _SERIES_TYPES = {"tv", "ona", "ova"}
+    # MAL's /anime search rejects long `q` values with 400 "invalid q" —
+    # in practice anything much past this returns the same error, and
+    # Crunchyroll's English titles (with long subtitles) routinely exceed it.
+    _MAX_QUERY_LEN = 64
+
+    @classmethod
+    def _title_candidates(cls, title: str) -> list[str]:
+        """
+        Build a list of query strings to try against MAL's search, from
+        most to least specific: the full title first, then the part before
+        a subtitle separator (": ", " - ", " — ") if there is one, then a
+        hard truncation as a last resort. Long CR titles like
+        "Hensuki - Are you willing to fall in love with a pervert, as long
+        as she's a cutie?" (83 chars) get rejected outright by MAL, so
+        falling back to "Hensuki" is what actually finds the entry.
+        """
+        candidates = [title]
+        for sep in (": ", " - ", " — "):
+            if sep in title:
+                short = title.split(sep, 1)[0].strip()
+                if short and short not in candidates:
+                    candidates.append(short)
+        if len(title) > cls._MAX_QUERY_LEN:
+            truncated = title[:cls._MAX_QUERY_LEN].rsplit(" ", 1)[0].strip()
+            if truncated and truncated not in candidates:
+                candidates.append(truncated)
+        return candidates
 
     def _search_title(self, title: str) -> dict | None:
-        resp = self.session.get(
-            f"{MAL_API_BASE}/anime",
-            params={"q": title, "limit": 5, "fields": "id,title,num_episodes,media_type"},
-            timeout=10,
-        )
-        if not resp.ok:
-            try:
-                detail = resp.json()
-            except Exception:
-                detail = resp.text
-            raise RuntimeError(f"MAL search failed {resp.status_code}: {detail}")
-        items = [item["node"] for item in resp.json().get("data", [])]
-        if not items:
-            return None
-        for item in items:
-            if item.get("media_type", "").lower() in self._SERIES_TYPES:
-                return item
-        return items[0]
+        for candidate in self._title_candidates(title):
+            resp = self.session.get(
+                f"{MAL_API_BASE}/anime",
+                params={"q": candidate, "limit": 5, "fields": "id,title,num_episodes,media_type"},
+                timeout=10,
+            )
+            if resp.status_code == 400:
+                # "invalid q" — try the next, shorter candidate instead of
+                # failing the whole search outright.
+                continue
+            if not resp.ok:
+                try:
+                    detail = resp.json()
+                except Exception:
+                    detail = resp.text
+                raise RuntimeError(f"MAL search failed {resp.status_code}: {detail}")
+            items = [item["node"] for item in resp.json().get("data", [])]
+            if not items:
+                continue
+            for item in items:
+                if item.get("media_type", "").lower() in self._SERIES_TYPES:
+                    return item
+            return items[0]
+        return None
 
     def _next_sequel(self, anime_id: int) -> dict | None:
         """Follow the 'sequel' relation edge from an anime entry, if any."""
@@ -164,9 +197,10 @@ class MALExporter(BaseExporter):
                 if current and old_progress >= new_progress:
                     if dry_run:
                         result.planned.append((
-                            s.series_title,
+                            s.series_id, s.series_title,
                             f"skip — remote progress {old_progress} "
                             f">= Crunchyroll progress {new_progress}",
+                            False,
                         ))
                     result.skipped.append(s.series_title)
                     continue
@@ -174,8 +208,9 @@ class MALExporter(BaseExporter):
                 if dry_run:
                     old_status = (current or {}).get("status", "—")
                     result.planned.append((
-                        s.series_title,
+                        s.series_id, s.series_title,
                         f"{old_status} {old_progress}ep -> {status} {new_progress}ep",
+                        True,
                     ))
                     continue
 

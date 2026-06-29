@@ -186,9 +186,10 @@ class AniListExporter(BaseExporter):
                 if current and current.get("progress", 0) >= new_progress:
                     if dry_run:
                         result.planned.append((
-                            s.series_title,
+                            s.series_id, s.series_title,
                             f"skip — remote progress {current.get('progress', 0)} "
                             f">= Crunchyroll progress {new_progress}",
+                            False,
                         ))
                     result.skipped.append(s.series_title)
                     continue
@@ -197,8 +198,9 @@ class AniListExporter(BaseExporter):
                     old_progress = current.get("progress", 0) if current else 0
                     old_status = current.get("status", "—") if current else "—"
                     result.planned.append((
-                        s.series_title,
+                        s.series_id, s.series_title,
                         f"{old_status} {old_progress}ep -> {status} {new_progress}ep",
+                        True,
                     ))
                     continue
 
