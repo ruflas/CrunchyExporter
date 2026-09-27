@@ -11,7 +11,7 @@ from rich import print as rprint
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.crunchyroll.auth import CRAuth, CRAuthError, DEFAULT_CLIENT_ID, DEFAULT_CLIENT_SECRET
-from src.crunchyroll.history import CRHistory
+from src.crunchyroll.history import CRHistory, CRHistoryError
 from src.storage.history_store import HistoryStore
 from src.exporters.anilist import AniListExporter
 from src.exporters.mal import MALExporter, get_auth_url as mal_auth_url, exchange_code as mal_exchange
@@ -80,7 +80,17 @@ def fetch(ctx, etp_rt, replace):
 
     with console.status("[bold green]Fetching watch history..."):
         history = CRHistory(token)
-        episodes = history.fetch_all(locale=cfg.get("locale", "en-US"))
+        try:
+            episodes = history.fetch_all(locale=cfg.get("locale", "en-US"))
+        except CRHistoryError as e:
+            console.print(f"[red]Error downloading history:[/red] {e}")
+            if e.episodes:
+                added = HistoryStore(Path(store_path)).update(e.episodes)
+                console.print(
+                    f"[yellow]Kept {len(e.episodes)} episodes downloaded before the error "
+                    f"({added} new) in {store_path}.[/yellow]"
+                )
+            raise SystemExit(1)
 
     store = HistoryStore(Path(store_path))
     if replace:

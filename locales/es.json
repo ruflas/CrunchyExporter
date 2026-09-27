@@ -65,6 +65,7 @@
   "sync_log_expected_path": "  Ruta esperada: {path}",
   "sync_log_auth_error": "Fallo de autenticacion: {error}",
   "sync_log_history_error": "Error descargando el historial: {error}",
+  "sync_log_partial_kept": "Se han conservado {count} episodios descargados antes del error ({added} nuevos) en {path}",
 
   "library_last_sync": "Ultima sincronizacion: {time}",
   "library_never": "nunca",

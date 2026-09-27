@@ -5,6 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.3.1] — 2026-09-27
+
+### Fixed
+- **History sync failing past ~900 episodes** ([crunchyexporter-cli#4](https://github.com/ruflas/crunchyexporter-cli/issues/4)):
+  Crunchyroll's `watch-history` endpoint now paginates with an opaque cursor
+  returned in `meta.next_page`, and rejects numeric `page` values with a
+  `400 invalid_value` once the history is long enough. The fetcher now follows
+  `next_page` until it is empty.
+  (Thanks to [@Clickercrazy](https://github.com/Clickercrazy) for the report.)
+- If the history download fails midway (Sync tab, tray/scheduled sync), the
+  episodes downloaded so far are now merged into the local history instead of
+  being discarded.
+
 ## [1.3.0] — 2026-06-29
 
 ### Fixed

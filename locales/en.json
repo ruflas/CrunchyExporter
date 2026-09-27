@@ -65,6 +65,7 @@
   "sync_log_expected_path": "  Expected path: {path}",
   "sync_log_auth_error": "Authentication failed: {error}",
   "sync_log_history_error": "Error downloading history: {error}",
+  "sync_log_partial_kept": "Kept {count} episodes downloaded before the error ({added} new) in {path}",
 
   "library_last_sync": "Last sync: {time}",
   "library_never": "never",

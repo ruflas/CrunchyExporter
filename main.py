@@ -40,7 +40,7 @@ def _headless_sync(target: str = "all") -> None:
         sys.exit(1)
 
     from src.crunchyroll.auth import CRAuth, DEFAULT_CLIENT_ID, DEFAULT_CLIENT_SECRET
-    from src.crunchyroll.history import CRHistory
+    from src.crunchyroll.history import CRHistory, CRHistoryError
     from src.storage.history_store import HistoryStore
     from src.exporters.anilist import AniListExporter
     from src.exporters.mal import MALExporter
@@ -58,7 +58,14 @@ def _headless_sync(target: str = "all") -> None:
     token = auth.login_with_etp_rt(etp_rt)
     print(f"Logged in: {token.account_id}")
 
-    episodes = CRHistory(token).fetch_all(cfg.get("locale", "en-US"))
+    try:
+        episodes = CRHistory(token).fetch_all(cfg.get("locale", "en-US"))
+    except CRHistoryError as e:
+        print(f"Error downloading history: {e}")
+        if e.episodes:
+            added = HistoryStore(store_p).update(e.episodes)
+            print(f"Kept {len(e.episodes)} episodes downloaded before the error ({added} new)")
+        sys.exit(1)
     store    = HistoryStore(store_p)
     added    = store.update(episodes)
     print(f"Sync: {added} new episodes (total {len(store)})")

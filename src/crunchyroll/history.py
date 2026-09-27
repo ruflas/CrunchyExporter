@@ -2,8 +2,17 @@ import requests
 from typing import Iterator
 from .models import CRToken, Episode
 
-CR_CONTENT_BASE = "https://beta-api.crunchyroll.com/content/v2"
+CR_API_HOST = "https://beta-api.crunchyroll.com"
+CR_CONTENT_BASE = f"{CR_API_HOST}/content/v2"
 PAGE_SIZE = 100
+
+
+class CRHistoryError(RuntimeError):
+    """History download failed; `episodes` holds whatever was fetched before the error."""
+
+    def __init__(self, message: str, episodes: list[Episode]):
+        super().__init__(message)
+        self.episodes = episodes
 
 
 class CRHistory:
@@ -19,38 +28,37 @@ class CRHistory:
 
     def fetch_all(self, locale: str = "en-US") -> list[Episode]:
         episodes = []
-        for ep in self._paginate(locale):
-            episodes.append(ep)
+        try:
+            for ep in self._paginate(locale):
+                episodes.append(ep)
+        except RuntimeError as e:
+            raise CRHistoryError(str(e), episodes) from e
         return episodes
 
     def _paginate(self, locale: str) -> Iterator[Episode]:
-        page = 1
-        while True:
-            items = self._fetch_page(page, locale)
-            if not items:
-                break
+        # The API paginates with an opaque cursor returned in meta.next_page;
+        # numeric page values are rejected once the history is long enough (issue #4).
+        url = f"{CR_CONTENT_BASE}/{self.token.account_id}/watch-history"
+        params = {"page_size": PAGE_SIZE, "locale": locale}
+        seen = set()
+        while url and url not in seen:
+            seen.add(url)
+            items, next_page = self._fetch_page(url, params)
             for item in items:
                 ep = self._parse_item(item)
                 if ep:
                     yield ep
-            if len(items) < PAGE_SIZE:
+            if not items or not next_page:
                 break
-            page += 1
+            url = next_page if next_page.startswith("http") else f"{CR_API_HOST}{next_page}"
+            params = None  # next_page already carries page, page_size and locale
 
-    def _fetch_page(self, page: int, locale: str) -> list[dict]:
-        url = f"{CR_CONTENT_BASE}/{self.token.account_id}/watch-history"
-        resp = self.session.get(
-            url,
-            params={
-                "page_size": PAGE_SIZE,
-                "page": page,
-                "locale": locale,
-            },
-            timeout=20,
-        )
+    def _fetch_page(self, url: str, params: dict | None) -> tuple[list[dict], str]:
+        resp = self.session.get(url, params=params, timeout=20)
         if not resp.ok:
             raise RuntimeError(f"History fetch failed {resp.status_code}: {resp.text}")
-        return resp.json().get("data", [])
+        body = resp.json()
+        return body.get("data", []), (body.get("meta") or {}).get("next_page", "")
 
     def _parse_item(self, item: dict) -> Episode | None:
         panel = item.get("panel", {})

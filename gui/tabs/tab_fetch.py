@@ -274,6 +274,14 @@ def _sync_worker(etp_rt, replace, cfg, data_root, log, done, is_cancelled):
         log(i18n.t("sync_log_dl_done", count=len(episodes)), "ok")
     except Exception as e:
         log(i18n.t("sync_log_history_error", error=e), "error")
+        if episodes:
+            # Merge (never replace) so a partial download can't wipe the stored history.
+            try:
+                added = HistoryStore(store_p).update(episodes)
+                log(i18n.t("sync_log_partial_kept",
+                           count=len(episodes), added=added, path=store_p), "warn")
+            except Exception as save_err:
+                log(i18n.t("sync_log_history_error", error=save_err), "error")
         done(False)
         return
 
