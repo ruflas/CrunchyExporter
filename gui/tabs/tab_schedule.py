@@ -176,11 +176,13 @@ class ScheduleTab:
 
         run_at = self._time_var.get().strip()
         try:
-            h, m = run_at.split(":")
-            assert 0 <= int(h) <= 23 and 0 <= int(m) <= 59
-        except Exception:
+            h, m = (int(part) for part in run_at.split(":"))
+        except ValueError:
+            h = m = -1
+        if not (0 <= h <= 23 and 0 <= m <= 59):
             messagebox.showerror("Error", "Invalid time. Use HH:MM (e.g. 08:00).")
             return
+        run_at = f"{h:02d}:{m:02d}"
 
         cmd = self._build_cmd()
 
