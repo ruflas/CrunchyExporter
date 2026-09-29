@@ -119,7 +119,7 @@ class AniListExporter(BaseExporter):
                 return node
         return None
 
-    def search_anime(self, series_id: str, title: str, season_number: int = 1) -> tuple[dict | None, str | None]:
+    def search_anime(self, title: str, season_number: int = 1) -> tuple[dict | None, str | None]:
         """
         Crunchyroll rarely puts the season number in the episode title, so a
         plain title search always lands on season 1's AniList entry. When we
@@ -171,7 +171,7 @@ class AniListExporter(BaseExporter):
     def export(self, series: list[SeriesSummary], dry_run: bool = False) -> ExportResult:
         result = ExportResult()
         for s in series:
-            media, err = self.search_anime(s.series_id, s.series_title, s.season_number)
+            media, err = self.search_anime(s.series_title, s.season_number)
             if not media:
                 result.failed.append((s.series_title, err or "Not found"))
                 continue

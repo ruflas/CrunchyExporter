@@ -111,7 +111,7 @@ class MALExporter(BaseExporter):
                 return rel.get("node")
         return None
 
-    def search_anime(self, series_id: str, title: str, season_number: int = 1) -> dict | None:
+    def search_anime(self, title: str, season_number: int = 1) -> dict | None:
         """
         Crunchyroll rarely puts the season number in the episode title, so a
         plain title search always lands on season 1's MAL entry. When we know
@@ -181,7 +181,7 @@ class MALExporter(BaseExporter):
         result = ExportResult()
         for s in series:
             try:
-                anime = self.search_anime(s.series_id, s.series_title, s.season_number)
+                anime = self.search_anime(s.series_title, s.season_number)
                 if not anime:
                     result.failed.append((s.series_title, "Not found on MyAnimeList"))
                     continue

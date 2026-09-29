@@ -22,29 +22,14 @@ def _headless_sync(target: str = "all") -> None:
     When running as a plain script, schedule and tray call
     src/main.py sync directly — this function is never reached.
     """
-    import yaml
     from gui.paths import data_root
 
     dr = data_root()
-    config_path = dr / "config.yaml"
-    if not config_path.exists():
-        print("config.yaml not found")
-        sys.exit(1)
-
-    with open(config_path, encoding="utf-8") as f:
-        cfg = yaml.safe_load(f) or {}
-
-    etp_rt = cfg.get("crunchyroll", {}).get("etp_rt", "").strip()
-    if not etp_rt:
-        print("No etp_rt cookie in config.yaml")
-        sys.exit(1)
+    cfg, etp_rt = _load_headless_config(dr)
 
     from src.crunchyroll.auth import CRAuth, DEFAULT_CLIENT_ID, DEFAULT_CLIENT_SECRET
     from src.crunchyroll.history import CRHistory, CRHistoryError
     from src.storage.history_store import HistoryStore
-    from src.exporters.anilist import AniListExporter
-    from src.exporters.mal import MALExporter
-    from src.exporters.mal_xml import MALXMLExporter
 
     cr_cfg     = cfg.get("crunchyroll", {})
     store_path = cfg.get("storage", {}).get("path", "data/history.json")
@@ -70,8 +55,32 @@ def _headless_sync(target: str = "all") -> None:
     added    = store.update(episodes)
     print(f"Sync: {added} new episodes (total {len(store)})")
 
-    summaries = store.series_summaries()
-    exp_cfg   = cfg.get("exporters", {})
+    _headless_export(target, store.series_summaries(), cfg.get("exporters", {}), dr)
+
+
+def _load_headless_config(dr: Path) -> tuple[dict, str]:
+    """Read config.yaml from the data root; exit if it or the etp_rt cookie is missing."""
+    import yaml
+
+    config_path = dr / "config.yaml"
+    if not config_path.exists():
+        print("config.yaml not found")
+        sys.exit(1)
+
+    with open(config_path, encoding="utf-8") as f:
+        cfg = yaml.safe_load(f) or {}
+
+    etp_rt = cfg.get("crunchyroll", {}).get("etp_rt", "").strip()
+    if not etp_rt:
+        print("No etp_rt cookie in config.yaml")
+        sys.exit(1)
+    return cfg, etp_rt
+
+
+def _headless_export(target: str, summaries, exp_cfg: dict, dr: Path) -> None:
+    from src.exporters.anilist import AniListExporter
+    from src.exporters.mal import MALExporter
+    from src.exporters.mal_xml import MALXMLExporter
 
     if target in ("anilist", "all"):
         tok = exp_cfg.get("anilist", {}).get("access_token", "").strip()

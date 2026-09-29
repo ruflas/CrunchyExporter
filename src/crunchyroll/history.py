@@ -66,7 +66,6 @@ class CRHistory:
             return None
 
         ep_meta = panel.get("episode_metadata", {})
-        series_meta = ep_meta if ep_meta else panel
 
         series_id = ep_meta.get("series_id") or panel.get("id", "")
         series_title = ep_meta.get("series_title") or panel.get("title", "unknown")

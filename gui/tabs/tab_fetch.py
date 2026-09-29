@@ -274,26 +274,35 @@ def _sync_worker(etp_rt, replace, cfg, data_root, log, done, is_cancelled):
         log(i18n.t("sync_log_dl_done", count=len(episodes)), "ok")
     except Exception as e:
         log(i18n.t("sync_log_history_error", error=e), "error")
-        if episodes:
-            # Merge (never replace) so a partial download can't wipe the stored history.
-            try:
-                added = HistoryStore(store_p).update(episodes)
-                log(i18n.t("sync_log_partial_kept",
-                           count=len(episodes), added=added, path=store_p), "warn")
-            except Exception as save_err:
-                log(i18n.t("sync_log_history_error", error=save_err), "error")
+        _save_partial(store_p, episodes, log)
         done(False)
         return
 
-    store = HistoryStore(store_p)
+    _save_episodes(HistoryStore(store_p), episodes, replace, log)
+    done(True)
+
+
+def _save_partial(store_p, episodes, log) -> None:
+    """Keep what was downloaded before an error. Merge (never replace) so a
+    partial download can't wipe the stored history."""
+    from src.storage.history_store import HistoryStore
+    if not episodes:
+        return
+    try:
+        added = HistoryStore(store_p).update(episodes)
+        log(i18n.t("sync_log_partial_kept",
+                   count=len(episodes), added=added, path=store_p), "warn")
+    except Exception as e:
+        log(i18n.t("sync_log_history_error", error=e), "error")
+
+
+def _save_episodes(store, episodes, replace, log) -> None:
     if replace:
         store.replace(episodes)
-        log(i18n.t("sync_log_replaced", count=len(episodes), path=store_p), "ok")
-    else:
-        added = store.update(episodes)
-        log(i18n.t("sync_log_added",  added=added), "ok")
-        log(i18n.t("sync_log_total",
-                   total=len(store),
-                   series=len(store.series_summaries())), "ok")
-
-    done(True)
+        log(i18n.t("sync_log_replaced", count=len(episodes), path=store.path), "ok")
+        return
+    added = store.update(episodes)
+    log(i18n.t("sync_log_added",  added=added), "ok")
+    log(i18n.t("sync_log_total",
+               total=len(store),
+               series=len(store.series_summaries())), "ok")

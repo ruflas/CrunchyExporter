@@ -19,6 +19,8 @@ from src.exporters.mal_xml import MALXMLExporter
 
 console = Console()
 
+DEFAULT_STORE_PATH = "data/history.json"
+
 
 def load_config(path: str) -> dict:
     with open(path, "r", encoding="utf-8") as f:
@@ -57,7 +59,7 @@ def fetch(ctx, etp_rt, replace):
       python src/main.py fetch --replace         (full resync, discards local cache)
     """
     cfg = ctx.obj["config"]
-    store_path = cfg.get("storage", {}).get("path", "data/history.json")
+    store_path = cfg.get("storage", {}).get("path", DEFAULT_STORE_PATH)
 
     cr_cfg = cfg.get("crunchyroll", {})
     etp_rt = etp_rt or cr_cfg.get("etp_rt") or ""
@@ -114,7 +116,7 @@ def status(ctx):
     and the highest episode number seen. Run 'fetch' first.
     """
     cfg = ctx.obj["config"]
-    store_path = cfg.get("storage", {}).get("path", "data/history.json")
+    store_path = cfg.get("storage", {}).get("path", DEFAULT_STORE_PATH)
     store = HistoryStore(Path(store_path))
 
     if len(store) == 0:
@@ -164,7 +166,7 @@ def export(ctx, target):
       python src/main.py export --target anilist   (AniList only)
     """
     cfg = ctx.obj["config"]
-    store_path = cfg.get("storage", {}).get("path", "data/history.json")
+    store_path = cfg.get("storage", {}).get("path", DEFAULT_STORE_PATH)
     store = HistoryStore(Path(store_path))
 
     if len(store) == 0:
@@ -197,7 +199,7 @@ def _export_anilist(cfg: dict, summaries):
     if not token:
         client_id = al_cfg.get("client_id", "")
         url = AniListExporter.get_auth_url(client_id)
-        console.print(f"\n[yellow]AniList:[/yellow] No access token found.")
+        console.print("\n[yellow]AniList:[/yellow] No access token found.")
         console.print(f"1. Open this URL to get your token:\n   [link]{url}[/link]")
         console.print("2. After authorizing, copy the [bold]access_token[/bold] from the redirect URL.")
         console.print("3. Add it to config.yaml under [bold]exporters.anilist.access_token[/bold].")
@@ -224,7 +226,7 @@ def _export_mal(cfg: dict, summaries):
         code = click.prompt("Paste the authorization code")
         with console.status("Exchanging code for token..."):
             token = mal_exchange(client_id, code, verifier, client_secret)
-        console.print(f"[green]Token obtained.[/green] Save it in config.yaml under exporters.mal.access_token")
+        console.print("[green]Token obtained.[/green] Save it in config.yaml under exporters.mal.access_token")
 
     with console.status("[bold]Exporting to MyAnimeList..."):
         result = MALExporter(token).export(summaries)
