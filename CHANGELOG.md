@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.3.2] — 2026-10-28
+
+### Fixed
+- **AniList exports taking many minutes and looking stuck**
+  ([#2](https://github.com/ruflas/CrunchyExporter/issues/2)): AniList allows
+  30 requests per minute, and the exporter kept running into that limit and
+  waiting about a minute each time, with nothing new on screen. Requests are
+  now paced to the limit AniList reports; rate-limit and network errors are
+  retried.
+- **Fewer AniList requests**: the user's list is read once instead of once per
+  series, and searches and sequel lookups are reused across the seasons of the
+  same show. On an 80-series history the preview went from about 6 minutes and
+  207 requests to under 3.5 minutes and 76 requests, with the same results.
+  (Thanks to [@Cryos-Kardia](https://github.com/Cryos-Kardia) for the report.)
+
 ## [1.3.1] — 2026-09-27
 
 ### Fixed
