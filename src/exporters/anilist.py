@@ -7,6 +7,10 @@ from .base import BaseExporter, ExportResult
 ANILIST_URL = "https://graphql.anilist.co"
 ANILIST_AUTH_URL = "https://anilist.co/api/v2/oauth/authorize"
 
+# AniList has run degraded at 30 requests/minute for a long time; the real
+# limit is read from the X-RateLimit-Limit header after the first request.
+_DEFAULT_RATE_LIMIT = 30
+
 _SEARCH_QUERY = """
 query ($search: String) {
   Media(search: $search, type: ANIME) {
@@ -43,6 +47,17 @@ query ($id: Int) {
 }
 """
 
+_VIEWER_QUERY = "query { Viewer { id } }"
+
+_LIST_QUERY = """
+query ($userId: Int, $chunk: Int) {
+  MediaListCollection(userId: $userId, type: ANIME, chunk: $chunk, perChunk: 500) {
+    hasNextChunk
+    lists { entries { mediaId status progress } }
+  }
+}
+"""
+
 _UPSERT_MUTATION = """
 mutation ($mediaId: Int, $status: MediaListStatus, $progress: Int, $completedAt: FuzzyDateInput) {
   SaveMediaListEntry(mediaId: $mediaId, status: $status, progress: $progress, completedAt: $completedAt) {
@@ -62,33 +77,51 @@ def _normalize(title: str) -> str:
 
 class AniListExporter(BaseExporter):
     def __init__(self, access_token: str):
-        self.headers = {
+        self.session = requests.Session()
+        self.session.headers.update({
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
             "Accept": "application/json",
-        }
+        })
+        self._interval = 60 / _DEFAULT_RATE_LIMIT
+        self._last_request = 0.0
+        # Per-run caches: a show's seasons search the same title and walk the
+        # same sequel chain (every One Piece arc walks it from the start).
+        self._search_cache: dict[str, dict | None] = {}
+        self._sequel_cache: dict[int, dict | None] = {}
+        self._list: dict[int, dict] | None = None
+        self._list_failed = False
 
     @staticmethod
     def get_auth_url(client_id: str) -> str:
         return f"{ANILIST_AUTH_URL}?client_id={client_id}&response_type=token"
 
+    def _post_once(self, payload: dict) -> requests.Response:
+        # Pace requests to stay under the limit: going over gets a 429 with a
+        # ~60s penalty, which used to be most of an export's running time.
+        wait = self._last_request + self._interval - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        resp = self.session.post(ANILIST_URL, json=payload, timeout=15)
+        self._last_request = time.monotonic()
+        limit = resp.headers.get("X-RateLimit-Limit", "")
+        if limit.isdigit() and int(limit) > 0:
+            self._interval = 60 / int(limit) * 1.05
+        return resp
+
     def _gql(self, query: str, variables: dict) -> dict:
-        resp = requests.post(
-            ANILIST_URL,
-            json={"query": query, "variables": variables},
-            headers=self.headers,
-            timeout=15,
-        )
-        # AniList rate limit: wait and retry once
-        if resp.status_code == 429:
-            retry_after = int(resp.headers.get("Retry-After", 60))
-            time.sleep(retry_after)
-            resp = requests.post(
-                ANILIST_URL,
-                json={"query": query, "variables": variables},
-                headers=self.headers,
-                timeout=15,
-            )
+        payload = {"query": query, "variables": variables}
+        for attempt in range(3):
+            try:
+                resp = self._post_once(payload)
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt == 2:
+                    raise
+                time.sleep(2 * (attempt + 1))
+                continue
+            if resp.status_code != 429:
+                break
+            time.sleep(int(resp.headers.get("Retry-After", 60)))
         resp.raise_for_status()
         data = resp.json()
         if "errors" in data:
@@ -96,19 +129,29 @@ class AniListExporter(BaseExporter):
         return data["data"]
 
     def _search_title(self, title: str) -> dict | None:
+        if title in self._search_cache:
+            return self._search_cache[title]
+        failed = False
         for candidate in dict.fromkeys([title, _normalize(title)]):
             try:
                 data = self._gql(_SEARCH_QUERY, {"search": candidate})
                 media = data.get("Media")
                 if media:
+                    self._search_cache[title] = media
                     return media
             except Exception:
-                pass
-            time.sleep(0.6)
+                failed = True
+        if not failed:  # a request error may be temporary: don't remember it
+            self._search_cache[title] = None
         return None
 
     def _next_sequel(self, media_id: int) -> dict | None:
         """Follow the SEQUEL relation edge from an anime entry, if any."""
+        if media_id not in self._sequel_cache:
+            self._sequel_cache[media_id] = self._fetch_sequel(media_id)
+        return self._sequel_cache[media_id]
+
+    def _fetch_sequel(self, media_id: int) -> dict | None:
         data = self._gql(_RELATIONS_QUERY, {"id": media_id})
         media = data.get("Media")
         if not media:
@@ -142,10 +185,36 @@ class AniListExporter(BaseExporter):
                     f"after '{media.get('title', {}).get('romaji', title)}'"
                 )
             media = nxt
-            time.sleep(0.6)
         return media, None
 
+    def _load_list(self) -> dict[int, dict]:
+        """The user's whole list, {mediaId: {"progress", "status"}}, in one go."""
+        user_id = (self._gql(_VIEWER_QUERY, {}).get("Viewer") or {}).get("id")
+        if not user_id:
+            raise ValueError("AniList didn't return the logged-in user")
+        entries: dict[int, dict] = {}
+        chunk = 1
+        while True:
+            col = self._gql(_LIST_QUERY, {"userId": user_id, "chunk": chunk}).get(
+                "MediaListCollection") or {}
+            for lst in col.get("lists") or []:
+                for e in lst.get("entries") or []:
+                    entries[e["mediaId"]] = {"progress": e.get("progress") or 0,
+                                             "status": e.get("status")}
+            if not col.get("hasNextChunk"):
+                return entries
+            chunk += 1
+
     def _current_entry(self, media_id: int) -> dict | None:
+        # Read the whole list once instead of one request per series; if that
+        # fails, fall back to asking for this entry alone.
+        if self._list is None and not self._list_failed:
+            try:
+                self._list = self._load_list()
+            except Exception:
+                self._list_failed = True
+        if self._list is not None:
+            return self._list.get(media_id)
         try:
             data = self._gql(_ENTRY_QUERY, {"id": media_id})
             return (data.get("Media") or {}).get("mediaListEntry")
@@ -212,8 +281,9 @@ class AniListExporter(BaseExporter):
                 if status == "COMPLETED":
                     variables["completedAt"] = self._fuzzy_date(s.last_watched_at)
                 self._gql(_UPSERT_MUTATION, variables)
+                if self._list is not None:
+                    self._list[media["id"]] = {"progress": new_progress, "status": status}
                 result.updated.append(s.series_title)
             except Exception as e:
                 result.failed.append((s.series_title, str(e)))
-            time.sleep(0.6)
         return result
