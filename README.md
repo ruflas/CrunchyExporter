@@ -13,6 +13,8 @@
 
 Exports include watch progress, series status (watching/completed), and real start/finish dates from your Crunchyroll history.
 
+> **Unofficial tool.** Not affiliated with or endorsed by Crunchyroll, AniList or MyAnimeList. It uses Crunchyroll's private API with your own session cookie and only reads your watch history, but Crunchyroll's Terms of Use prohibit automated access, so using it may put your account at risk. Use it at your own risk.
+
 ---
 
 ## Requirements
