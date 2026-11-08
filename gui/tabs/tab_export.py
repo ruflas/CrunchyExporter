@@ -431,11 +431,17 @@ def _export_worker(targets, cfg, data_root, log, done, ask=None, since=None):
                 log(i18n.t("export_log_anilist_error" if target == "anilist"
                            else "export_log_mal_error", error=e), "error")
                 continue
+            log(i18n.t("export_log_preview_target",
+                       target="AniList" if target == "anilist" else "MyAnimeList"), "info")
             for series_id, title, change, actionable in preview.planned:
                 log(i18n.t("export_log_preview_item", title=title, change=change), "info")
                 if actionable:
                     pending.append({"target": target, "series_id": series_id,
                                      "title": title, "change": change})
+            # Series that couldn't be matched: show which and why, not only
+            # how many, or the user only sees a count before deciding.
+            for title, reason in preview.failed:
+                log(i18n.t("export_log_fail_item", title=title, reason=reason), "warn")
             n_skipped += len(preview.skipped)
             n_failed += len(preview.failed)
 
