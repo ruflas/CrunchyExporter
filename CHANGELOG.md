@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.3.3] — 2026-11-08
+
+### Fixed
+- **No way to see which series couldn't be matched**: the export preview only
+  counted them, and the confirmation pointed to a log that didn't list them.
+  Each one is now listed in the preview with the reason, under a header per
+  service (AniList / MyAnimeList), before you decide whether to export.
+  (Thanks to [u/mark12000](https://reddit.com/u/mark12000) for the report.)
+
 ## [1.3.2] — 2026-10-28
 
 ### Fixed
