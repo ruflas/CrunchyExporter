@@ -51,9 +51,45 @@ def _invalid_q_resp():
     return resp
 
 
-def _exporter():
-    e = MALExporter.__new__(MALExporter)
+def _node(anime_id, title, episodes=12, media_type="tv", en="", ja=""):
+    return {"id": anime_id, "title": title, "num_episodes": episodes, "media_type": media_type,
+            "alternative_titles": {"en": en, "ja": ja, "synonyms": []}}
+
+
+class FakeAniList:
+    """Stands in for AniListExporter.find(): {title: idMal} or an exception."""
+
+    def __init__(self, ids=None, error=None):
+        self.ids = ids or {}
+        self.error = error
+        self.calls = []
+
+    def find(self, title):
+        self.calls.append(title)
+        if self.error:
+            raise self.error
+        mal_id = self.ids.get(title)
+        return {"id": 999, "idMal": mal_id} if mal_id else None
+
+
+def _exporter(anilist=None):
+    e = MALExporter("fake_token", anilist=anilist or FakeAniList())
     e.session = MagicMock()
+    return e
+
+
+def _routed(e, search, details=None):
+    """Answer MAL's search by query and /anime/{id} lookups by id."""
+    def get(url, params=None, timeout=None):
+        if url.endswith("/anime"):
+            return _ok_resp(search.get(params["q"], []))
+        if params["fields"] == "my_list_status":
+            return _status_resp()
+        resp = MagicMock(ok=True, status_code=200)
+        resp.json.return_value = (details or {})[int(url.rsplit("/", 1)[1])]
+        return resp
+    e.session.get.side_effect = get
+    e.session.patch.return_value = _patch_resp()
     return e
 
 
@@ -173,6 +209,94 @@ class TestRetries:
         assert result.updated == []
         assert result.failed[0][0] == "Naruto"
         assert e.session.get.call_count == 3
+
+
+class TestSearchMatching:
+    """Cases taken from real previews, where MAL's search order was wrong."""
+
+    def test_exact_title_beats_the_first_tv_result(self):
+        e = _routed(_exporter(), {"SPY x FAMILY": [
+            _node(59027, "Spy x Family Season 3", 13, en="Spy x Family Season 3"),
+            _node(50265, "Spy x Family", 12),
+        ]})
+        assert e._search_title("SPY x FAMILY")["id"] == 50265
+
+    def test_japanese_title_shared_by_the_franchise_does_not_tie(self):
+        anilist = FakeAniList()
+        e = _routed(_exporter(anilist), {"SPY x FAMILY": [
+            _node(59027, "Spy x Family Season 3", 13, en="Spy x Family Season 3",
+                  ja="SPY×FAMILY Season 3"),
+            _node(50602, "Spy x Family Part 2", 13, ja="SPY×FAMILY"),
+            _node(50265, "Spy x Family", 12, ja="SPY×FAMILY"),
+        ]})
+        assert e._search_title("SPY x FAMILY")["id"] == 50265
+        assert anilist.calls == []
+
+    def test_several_exact_titles_are_settled_by_anilist(self):
+        anilist = FakeAniList({"Fruits Basket": 38680})
+        e = _routed(_exporter(anilist),
+                    {"Fruits Basket": [_node(120, "Fruits Basket", 26),
+                                       _node(38680, "Fruits Basket (2019)", 25,
+                                             en="Fruits Basket")]},
+                    {38680: _node(38680, "Fruits Basket (2019)", 25)})
+        assert e._search_title("Fruits Basket")["id"] == 38680
+        assert anilist.calls == ["Fruits Basket"]
+
+    def test_exact_english_title_of_a_movie_beats_a_tv_result(self):
+        e = _routed(_exporter(), {"JUJUTSU KAISEN 0": [
+            _node(40748, "Jujutsu Kaisen", 24, en="Jujutsu Kaisen"),
+            _node(48561, "Jujutsu Kaisen 0 Movie", 1, "movie", en="Jujutsu Kaisen 0"),
+        ]})
+        assert e._search_title("JUJUTSU KAISEN 0")["id"] == 48561
+
+    def test_exact_match_does_not_ask_anilist(self):
+        anilist = FakeAniList()
+        e = _routed(_exporter(anilist), {"Naruto": [_node(20, "Naruto")]})
+        e._search_title("Naruto")
+        assert anilist.calls == []
+
+    def test_english_title_found_only_through_anilist(self):
+        # MAL's search returns nothing for many of Crunchyroll's English titles.
+        anilist = FakeAniList({"The Legendary Hero Is Dead!": 51706})
+        e = _routed(_exporter(anilist), {},
+                    {51706: _node(51706, "Yuusha ga Shinda!", 12)})
+
+        result = e.export([_series("The Legendary Hero Is Dead!", ep=12)])
+
+        assert result.updated == ["The Legendary Hero Is Dead!"]
+        assert "/anime/51706/" in e.session.patch.call_args.args[0]
+
+    def test_no_title_match_uses_anilist_mal_id(self):
+        anilist = FakeAniList({"Suzume": 50594})
+        e = _routed(_exporter(anilist),
+                    {"Suzume": [_node(36038, "Net-juu no Susume", 10,
+                                      en="Recovery of an MMO Junkie")]},
+                    {50594: _node(50594, "Suzume no Tojimari", 1, "movie")})
+
+        result = e.export([_series("Suzume", ep=1)])
+
+        assert result.updated == ["Suzume"]
+        assert "/anime/50594/" in e.session.patch.call_args.args[0]
+
+    def test_unrelated_results_and_no_anilist_match_is_not_found(self):
+        e = _routed(_exporter(), {"Suzume": [_node(36038, "Net-juu no Susume", 10,
+                                                   en="Recovery of an MMO Junkie")]})
+
+        result = e.export([_series("Suzume", ep=1)])
+
+        assert "Not found" in result.failed[0][1]
+        e.session.patch.assert_not_called()
+
+    def test_anilist_error_falls_back_to_a_close_title(self):
+        e = _routed(_exporter(FakeAniList(error=RuntimeError("AniList down"))),
+                    {"Bocchi the Rock": [_node(47917, "Bocchi the Rock!")]})
+        assert e._search_title("Bocchi the Rock")["id"] == 47917
+
+    def test_search_is_cached(self):
+        e = _routed(_exporter(), {"Naruto": [_node(20, "Naruto")]})
+        e._search_title("Naruto")
+        e._search_title("Naruto")
+        assert e.session.get.call_count == 1
 
 
 class TestTitleCandidates:

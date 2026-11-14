@@ -210,6 +210,17 @@ class TestRequests:
         assert _with(fake)._gql("query", {}) == {"ok": 1}
         assert sleeps.count(7) == 2
 
+    def test_find_returns_the_mal_id(self, sleeps):
+        # The MAL exporter asks AniList for the MAL id when MAL's search fails.
+        assert "idMal" in al._SEARCH_QUERY
+        fake = FakeAniList(media={"Suzume": {**_media(1, "Suzume no Tojimari", 1),
+                                             "idMal": 50594}})
+        assert _with(fake).find("Suzume")["idMal"] == 50594
+
+    def test_searches_without_a_token(self):
+        assert "Authorization" not in AniListExporter(None).session.headers
+        assert AniListExporter("tok").session.headers["Authorization"] == "Bearer tok"
+
     def test_timeout_is_retried(self, sleeps):
         fake = FakeAniList(fail_first=[requests.ReadTimeout("slow"), FakeResp(200, {"data": {"ok": 1}})])
         assert _with(fake)._gql("query", {}) == {"ok": 1}

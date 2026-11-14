@@ -1,13 +1,28 @@
+import re
 import secrets
 import time
+import unicodedata
+from difflib import SequenceMatcher
 import requests
 from urllib.parse import urlencode
 from src.crunchyroll.models import SeriesSummary
+from .anilist import AniListExporter
 from .base import BaseExporter, ExportResult
 
 MAL_API_BASE = "https://api.myanimelist.net/v2"
 MAL_AUTH_URL = "https://myanimelist.net/v1/oauth2/authorize"
 MAL_TOKEN_URL = "https://myanimelist.net/v1/oauth2/token"
+
+
+_SEARCH_FIELDS = "id,title,num_episodes,media_type,alternative_titles"
+# Below this title similarity (0-1) a MAL search result isn't trusted.
+_MIN_TITLE_SCORE = 0.8
+
+
+def _norm_title(text: str) -> str:
+    """Ignore case, punctuation and the × of titles like SPY×FAMILY."""
+    text = unicodedata.normalize("NFKC", text).replace("×", " x ").casefold()
+    return " ".join(re.findall(r"\w+", text))
 
 
 def get_auth_url(client_id: str) -> tuple[str, str]:
@@ -39,9 +54,13 @@ def exchange_code(client_id: str, code: str, verifier: str, client_secret: str =
 
 
 class MALExporter(BaseExporter):
-    def __init__(self, access_token: str):
+    def __init__(self, access_token: str, anilist: AniListExporter | None = None):
         self.session = requests.Session()
         self.session.headers.update({"Authorization": f"Bearer {access_token}"})
+        # Second opinion when MAL's search has no exact title match: AniList's
+        # search is better and its entries carry the MAL id (idMal).
+        self.anilist = anilist
+        self._search_cache: dict[str, dict | None] = {}
 
     _SERIES_TYPES = {"tv", "ona", "ova"}
     # MAL's /anime search rejects long `q` values with 400 "invalid q" —
@@ -88,29 +107,82 @@ class MALExporter(BaseExporter):
         return resp
 
     def _search_title(self, title: str) -> dict | None:
+        if title not in self._search_cache:
+            self._search_cache[title] = self._search_uncached(title)
+        return self._search_cache[title]
+
+    def _search_uncached(self, title: str) -> dict | None:
+        """
+        MAL's search ranks loosely: "SPY x FAMILY" returns Season 3 first and
+        many English Crunchyroll titles return nothing at all. Take a result
+        only when its title matches; otherwise ask AniList for the MAL id, and
+        only then settle for a close (not exact) title.
+        """
+        best, best_score = [], 0.0
         for candidate in self._title_candidates(title):
-            resp = self._get(
-                f"{MAL_API_BASE}/anime",
-                {"q": candidate, "limit": 5, "fields": "id,title,num_episodes,media_type"},
-            )
-            if resp.status_code == 400:
-                # "invalid q" — try the next, shorter candidate instead of
-                # failing the whole search outright.
-                continue
-            if not resp.ok:
-                try:
-                    detail = resp.json()
-                except Exception:
-                    detail = resp.text
-                raise RuntimeError(f"MAL search failed {resp.status_code}: {detail}")
-            items = [item["node"] for item in resp.json().get("data", [])]
+            items = self._search_page(candidate)
             if not items:
                 continue
-            for item in items:
-                if item.get("media_type", "").lower() in self._SERIES_TYPES:
-                    return item
-            return items[0]
-        return None
+            top, score = self._best_matches(items, (title, candidate))
+            if score > best_score:
+                best, best_score = top, score
+            if best_score >= 1.0:
+                break
+        if best_score >= 1.0 and len(best) == 1:
+            return best[0]
+        # No exact title, or several (a franchise sharing one name): ask AniList.
+        return (self._match_via_anilist(title)
+                or (best[0] if best_score >= _MIN_TITLE_SCORE else None))
+
+    def _search_page(self, query: str) -> list[dict]:
+        resp = self._get(f"{MAL_API_BASE}/anime",
+                         {"q": query, "limit": 10, "fields": _SEARCH_FIELDS})
+        if resp.status_code == 400:
+            # "invalid q" — try the next, shorter candidate instead of
+            # failing the whole search outright.
+            return []
+        if not resp.ok:
+            try:
+                detail = resp.json()
+            except Exception:
+                detail = resp.text
+            raise RuntimeError(f"MAL search failed {resp.status_code}: {detail}")
+        return [item["node"] for item in resp.json().get("data", [])]
+
+    def _best_matches(self, items: list[dict], queries: tuple[str, ...]) -> tuple[list[dict], float]:
+        """Results sharing the best title score, TV-like types and then MAL's order first."""
+        scored = [(self._title_score(item, queries),
+                   (item.get("media_type") or "").lower() in self._SERIES_TYPES,
+                   -rank, item) for rank, item in enumerate(items)]
+        scored.sort(key=lambda s: s[:3], reverse=True)
+        top = scored[0][0]
+        return [s[3] for s in scored if s[0] == top], top
+
+    @staticmethod
+    def _title_score(item: dict, queries: tuple[str, ...]) -> float:
+        """
+        Best similarity between a Crunchyroll title and the entry's names. The
+        Japanese title and synonyms count a bit less: a whole franchise often
+        shares them (Spy x Family Part 2 is "SPY×FAMILY" in Japanese).
+        """
+        alt = item.get("alternative_titles") or {}
+        names = [(item.get("title"), 1.0), (alt.get("en"), 1.0), (alt.get("ja"), 0.9),
+                 *((s, 0.95) for s in alt.get("synonyms") or [])]
+        return max((SequenceMatcher(None, _norm_title(q), _norm_title(n)).ratio() * weight
+                    for q in queries for n, weight in names if n), default=0.0)
+
+    def _match_via_anilist(self, title: str) -> dict | None:
+        if self.anilist is None:
+            self.anilist = AniListExporter(None)
+        try:
+            mal_id = (self.anilist.find(title) or {}).get("idMal")
+        except Exception:  # only a second opinion: MAL's result still stands
+            return None
+        if not mal_id:
+            return None
+        resp = self._get(f"{MAL_API_BASE}/anime/{mal_id}",
+                         {"fields": "id,title,num_episodes,media_type"})
+        return resp.json() if resp.ok else None
 
     def _next_sequel(self, anime_id: int) -> dict | None:
         """Follow the 'sequel' relation edge from an anime entry, if any."""

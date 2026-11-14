@@ -15,6 +15,7 @@ _SEARCH_QUERY = """
 query ($search: String) {
   Media(search: $search, type: ANIME) {
     id
+    idMal
     title { romaji english native }
     episodes
     status
@@ -76,13 +77,15 @@ def _normalize(title: str) -> str:
 
 
 class AniListExporter(BaseExporter):
-    def __init__(self, access_token: str):
+    def __init__(self, access_token: str | None):
+        # Without a token it can still search: the MAL exporter uses that.
         self.session = requests.Session()
         self.session.headers.update({
-            "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
             "Accept": "application/json",
         })
+        if access_token:
+            self.session.headers["Authorization"] = f"Bearer {access_token}"
         self._interval = 60 / _DEFAULT_RATE_LIMIT
         self._last_request = 0.0
         # Per-run caches: a show's seasons search the same title and walk the
@@ -127,6 +130,10 @@ class AniListExporter(BaseExporter):
         if "errors" in data:
             raise ValueError(data["errors"][0]["message"])
         return data["data"]
+
+    def find(self, title: str) -> dict | None:
+        """AniList's match for a title (cached), including its MAL id (idMal)."""
+        return self._search_title(title)
 
     def _search_title(self, title: str) -> dict | None:
         if title in self._search_cache:
