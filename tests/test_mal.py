@@ -1,6 +1,7 @@
 import requests
 import pytest
 from unittest.mock import MagicMock
+from src.exporters import mal as mal_module
 from src.exporters.mal import MALExporter, get_auth_url
 from src.crunchyroll.models import SeriesSummary
 
@@ -20,6 +21,9 @@ def _ok_resp(items):
 
 def _err_resp(status=401):
     resp = MagicMock()
+    resp.ok = False
+    resp.status_code = status
+    resp.headers = {}
     resp.raise_for_status.side_effect = requests.HTTPError(f"{status} Client Error")
     return resp
 
@@ -51,6 +55,11 @@ def _exporter():
     e = MALExporter.__new__(MALExporter)
     e.session = MagicMock()
     return e
+
+
+@pytest.fixture(autouse=True)
+def no_sleep(monkeypatch):
+    monkeypatch.setattr(mal_module.time, "sleep", lambda s: None)
 
 
 class TestMALExportHTTPErrors:
@@ -119,13 +128,51 @@ class TestMALExportHTTPErrors:
     def test_rate_limit_429_marks_failed_continues(self):
         e = _exporter()
         node = {"id": 1, "title": "B", "num_episodes": 12, "media_type": "tv"}
-        e.session.get.side_effect = [_err_resp(429), _ok_resp([node]), _status_resp()]
+        e.session.get.side_effect = [_err_resp(429)] * 3 + [_ok_resp([node]), _status_resp()]
         e.session.patch.return_value = _patch_resp()
 
         result = e.export([_series("A", "s1"), _series("B", "s2", ep=12)])
 
         assert result.failed[0][0] == "A"
+        assert "429" in result.failed[0][1]
         assert result.updated[0] == "B"
+
+
+class TestRetries:
+    NODE = {"id": 1, "title": "Naruto", "num_episodes": 220, "media_type": "tv"}
+
+    def test_timeout_is_retried(self):
+        e = _exporter()
+        e.session.get.side_effect = [requests.ReadTimeout("slow"), _ok_resp([self.NODE]),
+                                     _status_resp()]
+        e.session.patch.return_value = _patch_resp()
+
+        assert e.export([_series("Naruto", ep=3)]).updated == ["Naruto"]
+
+    def test_connection_error_is_retried(self):
+        e = _exporter()
+        e.session.get.side_effect = [requests.ConnectionError("reset"), _ok_resp([self.NODE]),
+                                     _status_resp()]
+        e.session.patch.return_value = _patch_resp()
+
+        assert e.export([_series("Naruto", ep=3)]).updated == ["Naruto"]
+
+    def test_rate_limit_is_retried(self):
+        e = _exporter()
+        e.session.get.side_effect = [_err_resp(429), _ok_resp([self.NODE]), _status_resp()]
+        e.session.patch.return_value = _patch_resp()
+
+        assert e.export([_series("Naruto", ep=3)]).updated == ["Naruto"]
+
+    def test_gives_up_after_three_timeouts(self):
+        e = _exporter()
+        e.session.get.side_effect = [requests.ReadTimeout("slow")] * 3
+
+        result = e.export([_series("Naruto", ep=3)])
+
+        assert result.updated == []
+        assert result.failed[0][0] == "Naruto"
+        assert e.session.get.call_count == 3
 
 
 class TestTitleCandidates:

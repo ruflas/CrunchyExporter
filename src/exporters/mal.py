@@ -1,4 +1,5 @@
 import secrets
+import time
 import requests
 from urllib.parse import urlencode
 from src.crunchyroll.models import SeriesSummary
@@ -71,12 +72,26 @@ class MALExporter(BaseExporter):
                 candidates.append(truncated)
         return candidates
 
+    def _get(self, url: str, params: dict) -> requests.Response:
+        """GET with retries: MAL's API sometimes takes over 10 s to answer."""
+        for attempt in range(3):
+            try:
+                resp = self.session.get(url, params=params, timeout=10)
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt == 2:
+                    raise
+                time.sleep(2 * (attempt + 1))
+                continue
+            if resp.status_code != 429:
+                return resp
+            time.sleep(int(resp.headers.get("Retry-After") or 5 * (attempt + 1)))
+        return resp
+
     def _search_title(self, title: str) -> dict | None:
         for candidate in self._title_candidates(title):
-            resp = self.session.get(
+            resp = self._get(
                 f"{MAL_API_BASE}/anime",
-                params={"q": candidate, "limit": 5, "fields": "id,title,num_episodes,media_type"},
-                timeout=10,
+                {"q": candidate, "limit": 5, "fields": "id,title,num_episodes,media_type"},
             )
             if resp.status_code == 400:
                 # "invalid q" — try the next, shorter candidate instead of
@@ -99,10 +114,9 @@ class MALExporter(BaseExporter):
 
     def _next_sequel(self, anime_id: int) -> dict | None:
         """Follow the 'sequel' relation edge from an anime entry, if any."""
-        resp = self.session.get(
+        resp = self._get(
             f"{MAL_API_BASE}/anime/{anime_id}",
-            params={"fields": "id,title,num_episodes,media_type,related_anime"},
-            timeout=10,
+            {"fields": "id,title,num_episodes,media_type,related_anime"},
         )
         if not resp.ok:
             return None
@@ -134,11 +148,7 @@ class MALExporter(BaseExporter):
         return anime
 
     def _current_status(self, anime_id: int) -> dict | None:
-        resp = self.session.get(
-            f"{MAL_API_BASE}/anime/{anime_id}",
-            params={"fields": "my_list_status"},
-            timeout=10,
-        )
+        resp = self._get(f"{MAL_API_BASE}/anime/{anime_id}", {"fields": "my_list_status"})
         if not resp.ok:
             return None
         return resp.json().get("my_list_status")
