@@ -4,6 +4,7 @@ from pathlib import Path
 import customtkinter as ctk
 
 from gui import i18n
+from gui.datepicker import DatePicker, calendar_icon
 from gui.logbox import LogBox
 
 _GREEN  = "#4caf50"
@@ -72,6 +73,12 @@ class ExportTab:
         self._since_entry = ctk.CTkEntry(btn_row, placeholder_text="YYYY-MM-DD", width=110)
         self._since_entry.insert(0, self.app.cfg.get("export_since", "") or "")
         self._since_entry.pack(side="left")
+        self._since_btn = ctk.CTkButton(
+            btn_row, text="", image=calendar_icon(), width=32, height=28,
+            fg_color=("gray75", "gray30"), hover_color=("gray65", "gray25"),
+            command=self._pick_since)
+        self._since_btn.pack(side="left", padx=(4, 0))
+        self._picker = None
 
         ctk.CTkLabel(bottom, text=i18n.t("export_progress_label") + ":",
                      anchor="w").grid(row=0, column=0, sticky="e")
@@ -137,6 +144,24 @@ class ExportTab:
 
         # XML — always ready
         self._card_xml.set_status(i18n.t("export_status_always"), _GREEN, show_setup=False)
+
+    def _pick_since(self) -> None:
+        """Choose the "only since" date with the mouse instead of typing it."""
+        from datetime import datetime
+        if self._picker is not None and self._picker.winfo_exists():
+            self._picker.lift()
+            return
+        try:
+            initial = datetime.strptime(self._since_entry.get().strip(), "%Y-%m-%d").date()
+        except ValueError:
+            initial = None
+
+        def picked(day) -> None:
+            self._since_entry.delete(0, "end")
+            if day:
+                self._since_entry.insert(0, day.isoformat())
+
+        self._picker = DatePicker(self._since_btn, initial, picked)
 
     def _go_settings(self) -> None:
         self.app._nav.set(i18n.t("nav_settings"))
