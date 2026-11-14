@@ -5,6 +5,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.3.4] — 2026-11-14
+
+### Added
+- **Date picker for "Only since"**: a calendar button next to the field
+  lets you choose the date with the mouse instead of typing it (future days
+  can't be picked, and Clear removes the filter). Typing still works.
+
+### Fixed
+- **MyAnimeList requests failing with read timeouts**: MAL's API sometimes
+  takes more than 10 seconds to answer, and each of those series failed.
+  Requests are now retried up to three times on timeouts and connection
+  errors, and after waiting when MAL's rate limit is hit.
+- **Series not found or matched to the wrong entry on MyAnimeList**: MAL's
+  search ranks loosely and its first TV result was taken, so *Suzume* went to
+  *Net-juu no Susume*, *SPY x FAMILY* to its Season 3 and *JUJUTSU KAISEN 0*
+  to the TV series, while many English Crunchyroll titles (*The Legendary
+  Hero Is Dead!*, *Tales of Wedding Rings*...) weren't found at all. Results
+  are now chosen by title (main, English, Japanese and alternative titles);
+  when there is no exact title, or several, AniList's match decides through
+  its MAL id. This works without setting up AniList.
+  (Thanks to [u/mark12000](https://reddit.com/u/mark12000) for the report.)
+
 ## [1.3.3] — 2026-11-08
 
 ### Fixed
